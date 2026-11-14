@@ -13,7 +13,7 @@ import java.util.function.BooleanSupplier;
 
 /** Each host publishes one immutable bitmap snapshot. Public rendering access never uses Binder or disk. */
 public final class IconAssets {
-    public record Entry(Bitmap background,Bitmap foreground,Bitmap mono,Bitmap notification,boolean colorChanged,boolean monoChanged,boolean nativeColor) {}
+    public record Entry(Bitmap background,Bitmap foreground,Bitmap mono,Bitmap notification,boolean colorChanged,boolean monoChanged,boolean nativeColor,int notificationScale) {}
     record Snapshot(Map<String,Entry> entries,String generation,int failures,int demo,Set<String> algorithms) {}
     private static volatile Snapshot snapshot=new Snapshot(Map.of(),"",0,0,Set.of());
     private static final AtomicInteger epoch=new AtomicInteger();
@@ -124,6 +124,11 @@ public final class IconAssets {
         Entry entry=snapshot.entries.get(pkg);
         return entry==null||entry.notification==null?null:drawable(c,entry.notification);
     }
+    /** Snapshot-only access; the SystemUI draw hook never reads preferences or decodes files. */
+    public static int notificationScale(String pkg){
+        Entry entry=snapshot.entries.get(pkg);
+        return entry==null?IconPolicy.NOTIFICATION_SCALE_DEFAULT:entry.notificationScale;
+    }
     private static BitmapDrawable drawable(Context c,Bitmap bitmap){
         BitmapDrawable result=new BitmapDrawable(c.getResources(),bitmap);result.setGravity(android.view.Gravity.FILL);result.setFilterBitmap(true);return result;
     }
@@ -159,7 +164,7 @@ public final class IconAssets {
         else if(policy.notification==IconPolicy.FOLLOW){notice=IconImages.monochrome(nativeColor&&nativeMono!=null?nativeMono:fg,true);}
         // A legacy flat Drawable has no independent themed slot. Leaving its color untouched also preserves native wrapping.
         if(policy.color==IconPolicy.ORIGINAL&&!(original instanceof AdaptiveIconDrawable))monoChanged=false;
-        return colorChanged||monoChanged||notice!=null?new Entry(IconImages.compactSolid(bg),fg,mono,notice,colorChanged,monoChanged,nativeColor):null;
+        return colorChanged||monoChanged||notice!=null?new Entry(IconImages.compactSolid(bg),fg,mono,notice,colorChanged,monoChanged,nativeColor,IconPolicy.notificationScale(policy.notificationScale)):null;
     }
     private static Bitmap custom(Context c,String id,int side,boolean local) throws Exception{
         if(IconPolicy.asset(id).isEmpty())return null;

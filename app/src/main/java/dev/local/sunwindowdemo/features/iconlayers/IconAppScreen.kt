@@ -42,14 +42,20 @@ fun IconAppScreen(app: LaunchableApp?, bottomInset: Dp = 0.dp) {
             IconLibrary.packages(context, generation).contains(app.packageName)
         }
     }
-    val policy = remember(app.packageName) { IconPolicy.read(context, app.packageName) }
+    var policy by remember(app.packageName) { mutableStateOf(IconPolicy.read(context, app.packageName)) }
     var revision by remember { mutableIntStateOf(0) }
     var field by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var manualSheet by remember { mutableStateOf(false) }
     fun save() {
-        IconPolicy.save(context, app.packageName, policy)
+        try {
+            IconPolicy.save(context, app.packageName, policy)
+            error = ""
+        } catch (e: Exception) {
+            policy = IconPolicy.read(context, app.packageName)
+            error = e.message ?: "保存图标设置失败"
+        }
         revision++
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -100,11 +106,18 @@ fun IconAppScreen(app: LaunchableApp?, bottomInset: Dp = 0.dp) {
     val previews by produceState<List<ImageBitmap?>>(listOf(null, null, null), entry, primary, revision) {
         value = withContext(Dispatchers.IO) {
             fun draw(drawable: Drawable?): ImageBitmap? = drawable?.let { IconImages.render(it, 192).asImageBitmap() }
+            fun drawNotification(drawable: Drawable?): ImageBitmap? = drawable?.let {
+                // Reserve room around the default 44dp glyph so 200% can be previewed without baking in a crop.
+                val pixels = android.graphics.Bitmap.createBitmap(192, 192, android.graphics.Bitmap.Config.ARGB_8888)
+                it.setBounds(48, 48, 144, 144)
+                it.draw(android.graphics.Canvas(pixels))
+                pixels.asImageBitmap()
+            }
             val current = entry
             listOf(
                 draw(if (current != null && current.colorChanged() && !current.nativeColor()) ImportedIcon(context.resources, current.background(), current.foreground(), current.mono()) else context.packageManager.getApplicationIcon(app.packageName)),
                 draw(current?.mono()?.let { BitmapDrawable(context.resources, it).apply { setColorFilter(primary, PorterDuff.Mode.SRC_IN) } }),
-                draw(current?.notification()?.let { BitmapDrawable(context.resources, it).apply { setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) } }),
+                drawNotification(current?.notification()?.let { IconImages.notificationScale(BitmapDrawable(context.resources, it).apply { setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) }, current.notificationScale()) }),
             )
         }
     }
@@ -123,7 +136,7 @@ fun IconAppScreen(app: LaunchableApp?, bottomInset: Dp = 0.dp) {
                             shape = MaterialTheme.shapes.extraLarge,
                         ) {
                             Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) {
-                                previews[index]?.let { Image(it, null, Modifier.size(if (index == 2) 44.dp else 78.dp)) } ?: Text("—")
+                                previews[index]?.let { Image(it, null, Modifier.size(if (index == 2) 88.dp else 78.dp)) } ?: Text("—")
                             }
                         }
                         Text(title, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
@@ -156,6 +169,17 @@ fun IconAppScreen(app: LaunchableApp?, bottomInset: Dp = 0.dp) {
                     policy.notification = choice; save()
                     if (choice == IconPolicy.UPLOAD) upload(3)
                 }
+            }
+        }
+        if (policy.notification != IconPolicy.UNCHANGED && !loading) item {
+            SettingsGroup {
+                SliderRow("通知图标大小", "100% 为当前默认大小；仅调整替换的通知图标，过大可能受状态栏边界裁切。",
+                    value = policy.notificationScale,
+                    range = IconPolicy.NOTIFICATION_SCALE_MIN..IconPolicy.NOTIFICATION_SCALE_MAX, unit = "%",
+                    onCommit = { policy.notificationScale = it; save() })
+                SettingRow("恢复默认大小", onClick = {
+                    policy.notificationScale = IconPolicy.NOTIFICATION_SCALE_DEFAULT; save()
+                })
             }
         }
         if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 12.dp)) }

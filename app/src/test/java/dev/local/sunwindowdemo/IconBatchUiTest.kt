@@ -8,6 +8,8 @@ import androidx.compose.ui.test.*
 import dev.local.sunwindowdemo.core.ui.ComplementsTheme
 import dev.local.sunwindowdemo.features.iconlayers.IconLayerStore
 import dev.local.sunwindowdemo.features.iconlayers.IconPolicy
+import dev.local.sunwindowdemo.features.iconlayers.IconBatchDialog
+import dev.local.sunwindowdemo.features.iconlayers.IconLayerScreen
 import dev.local.sunwindowdemo.navigation.ModuleApp
 import dev.local.sunwindowdemo.navigation.Page
 import org.junit.Assert.*
@@ -30,6 +32,55 @@ class IconBatchUiTest {
 
     @Test @Config(qualifiers = "zh-rCN-w915dp-h412dp-land-night-420dpi")
     fun landscapeBatchKeepsActionsReachable() = batchFlow()
+
+    @Test fun librarySelectionReplacesSelectionWithInstalledMatchesOnly() {
+        val context = compose.activity
+        val generation = "g_" + java.util.UUID.randomUUID().toString().replace("-", "")
+        val folder = File(context.createDeviceProtectedStorageContext().filesDir, "icon-libraries/$generation")
+        folder.mkdirs()
+        File(folder, "index.json").writeText("[\"test.icons.one\",\"test.icons.notinstalled\"]")
+        IconLayerStore.prefs(context).edit().clear().putString("generation", generation).commit()
+        var selected = setOf("test.icons.two")
+        compose.setContent {
+            ComplementsTheme(dynamic = false) {
+                IconLayerScreen(listOf(LaunchableApp("test.icons.one", "示例一"), LaunchableApp("test.icons.two", "示例二")),
+                    selection = selected, onSelectLibrary = { selected = it })
+            }
+        }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("1 个已安装应用；替换当前选择").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("选择素材库匹配应用").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(setOf("test.icons.one"), selected) }
+    }
+
+    @Test fun batchCanChangeOnlyNotificationSizeAndPreserveModes() {
+        val context = compose.activity
+        IconLayerStore.prefs(context).edit().clear().commit()
+        val original = IconPolicy().apply {
+            color = IconPolicy.MANUAL
+            monochrome = IconPolicy.UNCHANGED
+            notification = IconPolicy.FOLLOW
+            notificationScale = 135
+        }
+        IconPolicy.save(context, "test.icons.one", original)
+        var applied = false
+        compose.setContent {
+            ComplementsTheme(dynamic = false) {
+                IconBatchDialog(setOf("test.icons.one"), {}, { applied = true })
+            }
+        }
+        compose.onNodeWithText("应用").assertIsNotEnabled()
+        compose.onNodeWithText("保持各应用现有大小").performScrollTo().performClick()
+        compose.onNodeWithText("恢复默认大小").performScrollTo().performClick()
+        compose.onNodeWithText("应用").assertIsEnabled().performClick()
+        compose.waitUntil(10_000) { applied }
+        val saved = IconPolicy.read(context, "test.icons.one")
+        assertEquals(100, saved.notificationScale)
+        assertEquals(IconPolicy.MANUAL, saved.color)
+        assertEquals(IconPolicy.UNCHANGED, saved.monochrome)
+        assertEquals(IconPolicy.FOLLOW, saved.notification)
+    }
 
     private fun batchFlow() {
         val context = compose.activity

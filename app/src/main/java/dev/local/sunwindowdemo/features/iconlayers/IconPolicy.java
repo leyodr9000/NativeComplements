@@ -8,7 +8,9 @@ import java.util.*;
 public final class IconPolicy {
     public static final int AUTO = 0, MANUAL = 1, ALGORITHM = 2, ORIGINAL = 3;
     public static final int FOLLOW = 0, UPLOAD = 1, UNCHANGED = 2;
+    public static final int NOTIFICATION_SCALE_MIN = 50, NOTIFICATION_SCALE_MAX = 200, NOTIFICATION_SCALE_DEFAULT = 100;
     public int color, monochrome, notification=UNCHANGED;
+    public int notificationScale = NOTIFICATION_SCALE_DEFAULT;
     public String background = "", foreground = "", monoImage = "", notificationImage = "";
     public String generatedBackground="",generatedForeground="",generatedVersion="";
 
@@ -30,11 +32,15 @@ public final class IconPolicy {
         p.color = range(json.optInt("color"), 3);
         p.monochrome = range(json.optInt("monochrome"), 2);
         p.notification = range(json.optInt("notification",UNCHANGED), 2);
+        p.notificationScale = notificationScale(json.optInt("notificationScale", NOTIFICATION_SCALE_DEFAULT));
         p.background = asset(json.optString("background")); p.foreground = asset(json.optString("foreground"));
         p.monoImage = asset(json.optString("monoImage")); p.notificationImage = asset(json.optString("notificationImage"));
         p.generatedBackground=asset(json.optString("generatedBackground"));p.generatedForeground=asset(json.optString("generatedForeground"));
         p.generatedVersion=json.optString("generatedVersion");
         return p;
+    }
+    public static int notificationScale(int percent) {
+        return Math.max(NOTIFICATION_SCALE_MIN, Math.min(NOTIFICATION_SCALE_MAX, percent));
     }
     private static int range(int n, int max) { return n >= 0 && n <= max ? n : 0; }
     public static String asset(String id) { return id != null && id.matches("[a-f0-9]{64}") ? id : ""; }
@@ -55,11 +61,17 @@ public final class IconPolicy {
     }
     /** -1 preserves a channel. Each selected application retains its own uploaded/generated assets. */
     public static synchronized void batch(Context c, Set<String> packages, int color, int monochrome, int notification) {
+        batch(c, packages, color, monochrome, notification, -1);
+    }
+    /** notificationScale=-1 retains each app's size; publish all selected changes atomically. */
+    public static synchronized void batch(Context c, Set<String> packages, int color, int monochrome, int notification, int notificationScale) {
         if (packages.isEmpty() || packages.size() > 10000 || packages.stream().anyMatch(pkg -> !IconArchive.validPackage(pkg)))
             throw new IllegalArgumentException("packages");
         if (color != -1 && color != AUTO && color != ALGORITHM && color != ORIGINAL
-                || !batchMask(monochrome) || !batchMask(notification)) throw new IllegalArgumentException("mode");
-        if (color == -1 && monochrome == -1 && notification == -1) return;
+                || !batchMask(monochrome) || !batchMask(notification)
+                || notificationScale != -1 && (notificationScale < NOTIFICATION_SCALE_MIN || notificationScale > NOTIFICATION_SCALE_MAX))
+            throw new IllegalArgumentException("mode or notification scale");
+        if (color == -1 && monochrome == -1 && notification == -1 && notificationScale == -1) return;
         try {
             var prefs = IconLayerStore.prefs(c);
             JSONObject all = new JSONObject(prefs.getString("policies", "{}"));
@@ -70,6 +82,7 @@ public final class IconPolicy {
                 if (color != -1) policy.color = color;
                 if (monochrome != -1) policy.monochrome = monochrome;
                 if (notification != -1) policy.notification = notification;
+                if (notificationScale != -1) policy.notificationScale = notificationScale;
                 all.put(pkg, json(policy));
             }
             publish(c, all, originals);
@@ -80,6 +93,7 @@ public final class IconPolicy {
         JSONObject json = new JSONObject();
         json.put("color", range(p.color,3)); json.put("monochrome",range(p.monochrome,2));
         json.put("notification",range(p.notification,2));
+        json.put("notificationScale",notificationScale(p.notificationScale));
         json.put("background",asset(p.background)); json.put("foreground",asset(p.foreground));
         json.put("monoImage",asset(p.monoImage)); json.put("notificationImage",asset(p.notificationImage));
         json.put("generatedBackground",asset(p.generatedBackground));json.put("generatedForeground",asset(p.generatedForeground));

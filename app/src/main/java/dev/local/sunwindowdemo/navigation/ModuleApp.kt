@@ -102,7 +102,7 @@ fun ModuleApp(
             Page.IconLayers -> IconLayerScreen(controller.apps, bottomInset, openIconApp,
                 selection = if (selectingIcons) selectedIcons else null, onSelect = { pkg ->
                     iconSelection = if (pkg in selectedIcons) iconSelection - pkg else iconSelection + pkg
-                })
+                }, onSelectLibrary = { iconSelection = it.toList() })
             Page.IconApp -> IconAppScreen(iconApp, bottomInset)
             Page.Blocked -> AppPickerScreen(controller, bottomInset = bottomInset)
             else -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 24.dp + bottomInset)) {

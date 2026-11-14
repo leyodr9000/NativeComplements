@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (String) -> Unit = {},
-                    selection: Set<String>? = null, onSelect: (String) -> Unit = {}) {
+                    selection: Set<String>? = null, onSelect: (String) -> Unit = {},
+                    onSelectLibrary: (Set<String>) -> Unit = {}) {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(IconLayerStore.read(context)) }
@@ -105,6 +106,13 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
                     Text(progress, Modifier.padding(12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     TextButton(onClick = { cancel.set(true) }) { Text("取消导入") }
                 }
+                if (selection != null) {
+                    val matched = installed.map { it.packageName }.filter { it in library }.toSet()
+                    SettingsGroup {
+                        SettingRow("选择素材库匹配应用", "${matched.size} 个已安装应用；替换当前选择",
+                            onClick = if (matched.isEmpty() || busy) null else ({ onSelectLibrary(matched) }))
+                    }
+                }
                 if (message.isNotBlank()) Hint(message)
                 GroupTitle("逐应用设置")
             }
@@ -161,6 +169,8 @@ fun IconBatchDialog(packages: Set<String>, onDismiss: () -> Unit, onApplied: () 
     var color by remember { mutableIntStateOf(-1) }
     var monochrome by remember { mutableIntStateOf(-1) }
     var notification by remember { mutableIntStateOf(-1) }
+    var changeNotificationScale by remember { mutableStateOf(false) }
+    var notificationScale by remember { mutableIntStateOf(IconPolicy.NOTIFICATION_SCALE_DEFAULT) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val masks = listOf(-1 to "保持现有", IconPolicy.FOLLOW to "跟随前景", IconPolicy.UNCHANGED to "不处理")
@@ -173,16 +183,30 @@ fun IconBatchDialog(packages: Set<String>, onDismiss: () -> Unit, onApplied: () 
                     IconPolicy.ALGORITHM to "算法补全", IconPolicy.ORIGINAL to "原图"), !busy) { color = it }
                 IconBatchModes("莫奈图标", monochrome, masks, !busy) { monochrome = it }
                 IconBatchModes("通知图标", notification, masks, !busy) { notification = it }
+                GroupTitle("通知图标大小")
+                SettingsGroup {
+                    SettingRow(if (changeNotificationScale) "统一设置大小" else "保持各应用现有大小",
+                        onClick = if (busy) null else ({ changeNotificationScale = !changeNotificationScale }),
+                        trailing = { Switch(changeNotificationScale, onCheckedChange = null, enabled = !busy) })
+                    if (changeNotificationScale && !busy) {
+                        SliderRow("通知图标大小", "仅影响替换的通知小图标，不改变桌面与莫奈图标。",
+                            value = notificationScale,
+                            range = IconPolicy.NOTIFICATION_SCALE_MIN..IconPolicy.NOTIFICATION_SCALE_MAX, unit = "%",
+                            onCommit = { notificationScale = it })
+                        SettingRow("恢复默认大小", onClick = { notificationScale = IconPolicy.NOTIFICATION_SCALE_DEFAULT })
+                    }
+                }
             }
             if (error.isNotBlank()) Hint(error)
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") }
-                Button(enabled = !busy && (color != -1 || monochrome != -1 || notification != -1), onClick = {
+                Button(enabled = !busy && (color != -1 || monochrome != -1 || notification != -1 || changeNotificationScale), onClick = {
                     busy = true
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) { IconPolicy.batch(context, packages, color, monochrome, notification) }
+                            withContext(Dispatchers.IO) { IconPolicy.batch(context, packages, color, monochrome, notification,
+                                if (changeNotificationScale) notificationScale else -1) }
                             onApplied()
                         } catch (e: Exception) { error = e.message ?: "保存失败" }
                         finally { busy = false }

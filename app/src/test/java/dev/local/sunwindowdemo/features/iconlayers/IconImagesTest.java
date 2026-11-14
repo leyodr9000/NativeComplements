@@ -296,6 +296,31 @@ public class IconImagesTest {
         assertEquals(before,prefs.getString("policies","{}"));
         IconPolicy.batch(c,Set.of(PKG),-1,-1,-1);assertEquals(before,prefs.getString("policies","{}"));
     }
+    @Test public void notificationScaleMigratesClampsAndBatchPreservesOtherChannels()throws Exception{
+        assertEquals(100,IconPolicy.parse("{\"com.example.uncovered\":{}}").get(PKG).notificationScale);
+        assertEquals(50,IconPolicy.parse("{\"com.example.uncovered\":{\"notificationScale\":-900}}").get(PKG).notificationScale);
+        assertEquals(200,IconPolicy.parse("{\"com.example.uncovered\":{\"notificationScale\":900}}").get(PKG).notificationScale);
+        IconPolicy first=new IconPolicy();first.color=IconPolicy.MANUAL;first.notification=IconPolicy.UPLOAD;
+        first.notificationScale=125;first.notificationImage=upload(IconImages.solid(Color.WHITE,16));
+        IconPolicy.save(c,PKG,first);
+        IconPolicy.batch(c,Set.of(PKG),-1,-1,IconPolicy.FOLLOW);
+        assertEquals(125,IconPolicy.read(c,PKG).notificationScale);
+        IconPolicy.batch(c,Set.of(PKG),-1,-1,-1,150);
+        var saved=IconPolicy.read(c,PKG);
+        assertEquals(150,saved.notificationScale);assertEquals(IconPolicy.MANUAL,saved.color);
+        assertEquals(IconPolicy.FOLLOW,saved.notification);assertEquals(first.notificationImage,saved.notificationImage);
+        assertTrue(IconOverrides.image(c,first.notificationImage).isFile());
+        assertEquals(100,IconPolicy.read(c,"com.example.other").notificationScale);
+        String before=IconLayerStore.prefs(c).getString("policies","{}");
+        assertThrows(IllegalArgumentException.class,()->IconPolicy.batch(c,Set.of(PKG),-1,-1,-1,49));
+        assertThrows(IllegalArgumentException.class,()->IconPolicy.batch(c,Set.of(PKG),-1,-1,-1,201));
+        assertEquals(before,IconLayerStore.prefs(c).getString("policies","{}"));
+        Bitmap nativeForeground=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888);
+        Paint ink=new Paint();ink.setColor(Color.WHITE);new Canvas(nativeForeground).drawRect(20,12,44,52,ink);
+        Shadows.shadowOf(c.getPackageManager()).setApplicationIcon(PKG,new BitmapDrawable(c.getResources(),nativeForeground));
+        var entry=IconAssets.resolve(c,PKG,saved,"",64,true);
+        assertNotNull(entry);assertNotNull(entry.notification());assertEquals(150,entry.notificationScale());
+    }
     private String upload(Bitmap b)throws Exception{
         File file=File.createTempFile("test-user-image-",".png",c.getCacheDir());
         try(OutputStream out=new FileOutputStream(file)){b.compress(Bitmap.CompressFormat.PNG,100,out);}

@@ -58,7 +58,7 @@ public final class SystemIconModule extends XposedModule {
             if(replacement==null)return chain.proceed();
             // Use the native drawable after its ROM-specific downscale and density adjustment.
             Drawable original=(Drawable)chain.proceed();
-            return IconImages.notificationSize(c,replacement,original);
+            return IconImages.notificationSize(c,replacement,original,IconAssets.notificationScale(notice.getPackageName()));
         });
         note("NOTIFICATION_READY");
     }

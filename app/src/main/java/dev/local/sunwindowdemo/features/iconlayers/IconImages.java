@@ -128,12 +128,44 @@ public final class IconImages {
         return out;
     }
     static Drawable notificationSize(Context context,Drawable replacement,Drawable original){
-        if(original==null)return replacement;
-        int side=Math.max(original.getIntrinsicWidth(),original.getIntrinsicHeight());
-        if(side<=0||side>512)return replacement;
-        Bitmap pixels=render(replacement,side);
-        pixels.setDensity(context.getResources().getDisplayMetrics().densityDpi);
-        return new BitmapDrawable(context.getResources(),pixels);
+        return notificationSize(context,replacement,original,IconPolicy.NOTIFICATION_SCALE_DEFAULT);
+    }
+    static Drawable notificationSize(Context context,Drawable replacement,Drawable original,int percent){
+        Drawable sized=replacement;
+        int side=original==null?0:Math.max(original.getIntrinsicWidth(),original.getIntrinsicHeight());
+        if(side>0&&side<=512){
+            Bitmap pixels=render(replacement,side);
+            pixels.setDensity(context.getResources().getDisplayMetrics().densityDpi);
+            sized=new BitmapDrawable(context.getResources(),pixels);
+        }
+        // Scale after matching the ROM's native drawable size. A larger intrinsic bitmap
+        // would be normalized down again by StatusBarIconView. Do not clip at our bounds.
+        return notificationScale(sized,percent);
+    }
+    public static Drawable notificationScale(Drawable source,int percent){
+        int bounded=IconPolicy.notificationScale(percent);
+        return bounded==IconPolicy.NOTIFICATION_SCALE_DEFAULT?source:new NotificationScaleDrawable(source,bounded);
+    }
+    private static final class NotificationScaleDrawable extends android.graphics.drawable.DrawableWrapper {
+        private final int percent;
+        NotificationScaleDrawable(Drawable source,int percent){super(source);this.percent=percent;}
+        @Override public void draw(Canvas canvas){
+            int saved=canvas.save();Rect bounds=getBounds();
+            try{
+                canvas.scale(percent/100f,percent/100f,bounds.exactCenterX(),bounds.exactCenterY());
+                super.draw(canvas);
+            }finally{canvas.restoreToCount(saved);}
+        }
+        @Override public ConstantState getConstantState(){
+            ConstantState state=getDrawable().getConstantState();
+            if(state==null)return null;
+            int scale=percent;
+            return new ConstantState(){
+                @Override public Drawable newDrawable(){return new NotificationScaleDrawable(state.newDrawable(),scale);}
+                @Override public Drawable newDrawable(android.content.res.Resources res){return new NotificationScaleDrawable(state.newDrawable(res),scale);}
+                @Override public int getChangingConfigurations(){return state.getChangingConfigurations();}
+            };
+        }
     }
 
     /** Preserve source canvas for adaptive icons; normalize only the notification version. */
