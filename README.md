@@ -1,10 +1,12 @@
 # 类原生补全计划 · NativeComplements
 
+> 此仓库为 [leyodr9000 的开发 fork](https://github.com/leyodr9000/NativeComplements)，基于 [原项目](https://github.com/AIXINJUELUOAI/NativeComplements) 继续开发。图标批量设置、独立通知库和通知大小相关改动及构建方式见 [Fork 开发说明](FORK.md)。当前 CI 只生成未签名验证 APK，不能直接安装。
+
 给类原生 Android 补上一些日常用得上的功能：小窗、弹幕通知、快捷建议、图标适配、来电拦截、防摇一摇、边缘防误触，以及通知与控制中心调整。
 
 使用原生 Android 设置风格，支持系统动态颜色和深色模式。不依赖无障碍服务，不接管默认拨号或桌面，也不需要给普通应用逐个添加作用域。
 
-> 当前源码版本：**0.9.19-signal-test1**（versionCode 96）。这是个人维护的系统适配项目，不是 Flyme 或 SunOS 功能的完整移植，也不保证兼容所有类原生 ROM。
+> 当前源码基于 **0.9.21-test5**（versionCode 110），包含本 fork 的后续功能提交；未签名验证构建不等同于上游正式发布。这是个人维护的系统适配项目，不是 Flyme 或 SunOS 功能的完整移植，也不保证兼容所有类原生 ROM。
 
 ## 下载与交流
 
