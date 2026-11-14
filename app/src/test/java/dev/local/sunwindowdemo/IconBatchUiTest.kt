@@ -2,6 +2,7 @@ package dev.local.sunwindowdemo
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Looper
 import android.view.View
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.test.*
@@ -16,6 +17,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -101,7 +103,11 @@ class IconBatchUiTest {
                     ModuleApp(controller, Page.IconLayers, {}, {})
                 }
             }
-            compose.waitUntil(10_000) { controller.catalogLoaded }
+            compose.waitUntil(10_000) {
+                // The catalog worker publishes through Handler; Compose's clock alone does not drain that paused looper.
+                Shadows.shadowOf(Looper.getMainLooper()).idle()
+                controller.catalogLoaded
+            }
             compose.runOnIdle {
                 ReflectionHelpers.getField<MutableState<List<LaunchableApp>>>(controller, "apps\$delegate").value =
                     listOf(LaunchableApp("test.icons.one", "示例一"), LaunchableApp("test.icons.two", "示例二"))

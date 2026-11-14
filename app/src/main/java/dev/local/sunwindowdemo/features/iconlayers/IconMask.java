@@ -16,7 +16,9 @@ final class IconMask {
         int w=right-left,h=bottom-top,area=w*h;
         // Transparent adaptive padding must not hide an almost-solid square backdrop.
         // Thin rectangular glyphs, circles and sparse subjects retain their alpha shape.
-        boolean field=visible>area*.85f && (visible>source.length*.85f || Math.min(w,h)>=Math.max(w,h)*.85f);
+        // Small filled glyphs (for example an uploaded square) are meaningful subjects, not full icon backdrops.
+        boolean field=visible>area*.85f && (visible>source.length*.85f
+            || visible>=source.length*.25f && Math.min(w,h)>=Math.max(w,h)*.85f);
         if(!field)return source.clone();
         int[] red=new int[2*w+2*h],green=new int[red.length],blue=new int[red.length];int count=0;
         for(int y=top;y<bottom;y++)for(int x=left;x<right;x++)if(x==left||x==right-1||y==top||y==bottom-1){

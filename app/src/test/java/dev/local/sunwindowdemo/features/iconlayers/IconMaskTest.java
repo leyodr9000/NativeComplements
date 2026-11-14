@@ -33,6 +33,10 @@ public class IconMaskTest {
         for(int y=10;y<90;y++)for(int x=10;x<90;x++)if((x-50)*(x-50)+(y-50)*(y-50)<1600)circle[y*100+x]=WHITE;
         assertArrayEquals(circle,IconMask.prepare(circle,100,100));
     }
+    @Test public void smallFilledSquareGlyphRemainsUsableInsteadOfBeingStrippedAsBackdrop(){
+        int[] p=new int[32*32];rect(p,32,12,12,20,20,RED);
+        assertArrayEquals(p,IconMask.prepare(p,32,32));
+    }
     @Test public void opaqueAndPaddedSolidFieldsAreRejectedInsteadOfBecomingBlocks(){
         int[] opaque=new int[64*64];Arrays.fill(opaque,BLUE);assertNull(IconMask.prepare(opaque,64,64));
         int[] padded=new int[144*144];rect(padded,144,24,24,120,120,BLUE);
