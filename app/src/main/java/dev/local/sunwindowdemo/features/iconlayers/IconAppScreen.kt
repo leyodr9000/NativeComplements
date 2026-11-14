@@ -165,11 +165,14 @@ fun IconAppScreen(app: LaunchableApp?, bottomInset: Dp = 0.dp) {
         item { GroupTitle("状态栏通知小图标") }
         item {
             SettingsGroup {
-                ModeRows(listOf("跟随前景", "上传图片", "不处理"), policy.notification, !loading) { choice ->
+                ModeRows(listOf("跟随前景", "上传图片", "不处理", "通知图标库"), policy.notification, !loading) { choice ->
                     policy.notification = choice; save()
                     if (choice == IconPolicy.UPLOAD) upload(3)
                 }
             }
+        }
+        if (policy.notification == IconPolicy.NOTIFICATION_LIBRARY) item {
+            Hint("使用首页单独导入的通知图标库前景；未匹配或无法提取时保留应用原生通知图标。")
         }
         if (policy.notification != IconPolicy.UNCHANGED && !loading) item {
             SettingsGroup {

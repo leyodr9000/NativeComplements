@@ -41,11 +41,20 @@ public final class IconLayerProvider extends ContentProvider {
             result.putStringArrayList("targets",new java.util.ArrayList<>(installed));
             var packages = IconLibrary.packages(getContext(), result.getString("generation", ""));
             packages.retainAll(installed); result.putStringArrayList("packages", packages);
+            var notificationPackages=IconLibrary.packages(getContext(),result.getString("notificationGeneration",""));
+            notificationPackages.retainAll(installed);result.putStringArrayList("notificationPackages",notificationPackages);
             for (String key : new String[]{"originals", "restore"}) {
                 var selected = result.getStringArrayList(key);
                 if (selected != null) selected.retainAll(installed);
             }
             return result;
+        }
+        if("notificationLoaded".equals(method)) {
+            String[] callers=getContext().getPackageManager().getPackagesForUid(Binder.getCallingUid());
+            if(callers==null||!Arrays.asList(callers).contains(IconLayerStore.SYSTEM_UI))
+                throw new SecurityException("notification host acknowledgement");
+            IconLibrary.acknowledgeNotification(getContext(),arg==null?"":arg);
+            return Bundle.EMPTY;
         }
         if ("report".equals(method) && launcher && extras != null) {
             IconLayerStore.report(getContext(), extras);

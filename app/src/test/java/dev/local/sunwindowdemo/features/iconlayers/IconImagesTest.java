@@ -321,6 +321,24 @@ public class IconImagesTest {
         var entry=IconAssets.resolve(c,PKG,saved,"",64,true);
         assertNotNull(entry);assertNotNull(entry.notification());assertEquals(150,entry.notificationScale());
     }
+    @Test public void notificationLibraryDoesNotChangeDesktopAndMissingOrInvalidMasksRetainNative()throws Exception{
+        Shadows.shadowOf(c.getPackageManager()).setApplicationIcon(PKG,new AdaptiveIconDrawable(new ColorDrawable(Color.MAGENTA),new ColorDrawable(Color.GREEN)));
+        String generation="n_"+java.util.UUID.randomUUID().toString().replace("-","");
+        File folder=new File(IconLibrary.generation(c,generation),PKG);assertTrue(folder.mkdirs());
+        Files.writeString(new File(folder.getParentFile(),"index.json").toPath(),"[\""+PKG+"\"]");
+        Bitmap artwork=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888);
+        Paint ink=new Paint();ink.setColor(Color.WHITE);new Canvas(artwork).drawRect(24,8,40,56,ink);
+        try(var stream=new FileOutputStream(new File(folder,"1.png"))){assertTrue(artwork.compress(Bitmap.CompressFormat.PNG,100,stream));}
+        IconPolicy p=new IconPolicy();p.color=IconPolicy.ORIGINAL;p.monochrome=IconPolicy.UNCHANGED;p.notification=IconPolicy.NOTIFICATION_LIBRARY;
+        var result=IconAssets.resolve(c,PKG,p,"",64,true,generation);
+        assertNotNull(result);assertTrue(result.nativeColor());assertFalse(result.colorChanged());assertFalse(result.monoChanged());
+        assertNotNull(result.notification());assertTrue(IconImages.contentBounds(result.notification()).height()>IconImages.contentBounds(result.notification()).width());
+        assertNull(IconAssets.resolve(c,PKG,p,"",64,true,""));
+        IconArchive.delete(new File(folder,"1.png"));
+        assertNull(IconAssets.resolve(c,PKG,p,"",64,true,generation));
+        try(var stream=new FileOutputStream(new File(folder,"1.png"))){assertTrue(IconImages.solid(Color.BLUE,64).compress(Bitmap.CompressFormat.PNG,100,stream));}
+        assertNull(IconAssets.resolve(c,PKG,p,"",64,true,generation));
+    }
     private String upload(Bitmap b)throws Exception{
         File file=File.createTempFile("test-user-image-",".png",c.getCacheDir());
         try(OutputStream out=new FileOutputStream(file)){b.compress(Bitmap.CompressFormat.PNG,100,out);}

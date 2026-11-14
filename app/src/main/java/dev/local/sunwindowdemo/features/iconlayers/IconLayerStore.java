@@ -30,6 +30,9 @@ public final class IconLayerStore {
         b.putString("generation", p.getString("generation", ""));
         b.putString("title", p.getString("title", ""));
         b.putInt("count", p.getInt("count", 0));
+        b.putString("notificationGeneration",p.getString("notificationGeneration",""));
+        b.putString("notificationTitle",p.getString("notificationTitle",""));
+        b.putInt("notificationCount",p.getInt("notificationCount",0));
         b.putStringArrayList("originals", new java.util.ArrayList<>(p.getStringSet("originals", java.util.Collections.emptySet())));
         b.putStringArrayList("restore", new java.util.ArrayList<>(p.getStringSet("restore", java.util.Collections.emptySet())));
         b.putString("version", p.getString("version", ""));

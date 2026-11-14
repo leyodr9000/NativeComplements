@@ -68,6 +68,18 @@ public class IconPolicyScaleTest {
         assertEquals(100,IconPolicy.read(context,FIRST).notificationScale);
         assertEquals(IconPolicy.FOLLOW,IconPolicy.read(context,FIRST).notification);
     }
+    @Test public void independentNotificationLibraryModeRoundTripsWithoutChangingOtherChannels(){
+        IconPolicy p=new IconPolicy();p.notificationScale=135;p.color=IconPolicy.ORIGINAL;p.monochrome=IconPolicy.UPLOAD;
+        p.monoImage="a".repeat(64);IconPolicy.save(context,FIRST,p);
+        IconPolicy.batch(context,Set.of(FIRST),-1,-1,IconPolicy.NOTIFICATION_LIBRARY);
+        IconPolicy restored=IconPolicy.read(context,FIRST);
+        assertEquals(IconPolicy.NOTIFICATION_LIBRARY,restored.notification);
+        assertEquals(135,restored.notificationScale);assertEquals(IconPolicy.ORIGINAL,restored.color);
+        assertEquals(IconPolicy.UPLOAD,restored.monochrome);assertEquals(p.monoImage,restored.monoImage);
+        String before=IconLayerStore.prefs(context).getString("policies","{}");
+        assertThrows(IllegalArgumentException.class,()->IconPolicy.batch(context,Set.of(FIRST),-1,IconPolicy.NOTIFICATION_LIBRARY,-1));
+        assertEquals(before,IconLayerStore.prefs(context).getString("policies","{}"));
+    }
     @Test public void invalidBatchCannotPartiallyPublishAndKeepAllIsNoOp(){
         IconPolicy p=new IconPolicy();p.notificationScale=150;IconPolicy.save(context,FIRST,p);
         String before=IconLayerStore.prefs(context).getString("policies","{}");

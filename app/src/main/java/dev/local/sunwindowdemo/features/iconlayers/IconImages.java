@@ -171,11 +171,9 @@ public final class IconImages {
     /** Preserve source canvas for adaptive icons; normalize only the notification version. */
     public static Bitmap monochrome(Bitmap source, boolean normalize) {
         int w=source.getWidth(),h=source.getHeight(),n=w*h;int[] pixels=new int[n];source.getPixels(pixels,0,w,0,0,w,h);
-        int opaque=0;for(int p:pixels)if(Color.alpha(p)>24)opaque++;
-        Bitmap clean=source;
-        if(opaque>n*.85f){clean=removeBorder(source);if(clean==null)return null;clean.getPixels(pixels,0,w,0,0,w,h);}
-        int visible=0;for(int i=0;i<n;i++){int a=Color.alpha(pixels[i]);if(a>24)visible++;pixels[i]=Color.argb(a,255,255,255);}
-        if(visible<n*.002f)return null;
+        pixels=IconMask.prepare(pixels,w,h);
+        if(pixels==null)return null;
+        for(int i=0;i<n;i++)pixels[i]=Color.argb(Color.alpha(pixels[i]),255,255,255);
         Bitmap mask=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);mask.setPixels(pixels,0,w,0,0,w,h);
         return normalize?fit(mask,64,.94f):mask;
     }

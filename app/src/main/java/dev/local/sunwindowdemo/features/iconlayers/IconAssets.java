@@ -59,6 +59,9 @@ public final class IconAssets {
                 throw new IllegalStateException("icon targets not ready");
             if(load(host,config,()->request!=epoch.get())){
                 android.util.Log.i("NcIconAssets","loaded host="+host.getPackageName()+" entries="+snapshot.entries.size()+" failures="+snapshot.failures);
+                if(IconLayerStore.SYSTEM_UI.equals(host.getPackageName()))try{
+                    host.getContentResolver().call(IconLayerStore.URI,"notificationLoaded",config.getString("notificationGeneration",""),null);
+                }catch(Exception cleanup){android.util.Log.w("NcIconAssets","notification cleanup deferred",cleanup);}
                 List<Runnable> callbacks;synchronized(IconAssets.class){callbacks=List.copyOf(listeners);}
                 for(Runnable callback:callbacks)try{callback.run();}catch(RuntimeException ignored){}
             }
@@ -77,6 +80,7 @@ public final class IconAssets {
             Map<String,IconPolicy> policies=IconPolicy.parse(config.getString("policies","{}"));
             Set<String> originals=new HashSet<>(config.getStringArrayList("originals")==null?List.of():config.getStringArrayList("originals"));
             Set<String> libraryPackages=new HashSet<>(config.getStringArrayList("packages")==null?List.of():config.getStringArrayList("packages"));
+            Set<String> notificationPackages=new HashSet<>(config.getStringArrayList("notificationPackages")==null?List.of():config.getStringArrayList("notificationPackages"));
             List<String> targets=config.getStringArrayList("targets");if(targets==null)targets=List.of();
             // Launcher pixels must not shrink with the number of installed system components.
             // Keep native originals out of the snapshot and preserve a fixed layer resolution.
@@ -87,7 +91,8 @@ public final class IconAssets {
                 if(p.color==IconPolicy.ALGORITHM)algorithms.add(pkg);
                 if(!config.getBoolean("notifications"))p.notification=IconPolicy.UNCHANGED;
                 try{
-                    Entry entry=resolve(c,pkg,p,libraryPackages.contains(pkg)?generation:"",side,false);
+                    Entry entry=resolve(c,pkg,p,libraryPackages.contains(pkg)?generation:"",side,false,
+                        notificationPackages.contains(pkg)?config.getString("notificationGeneration",""):"");
                     if(entry!=null){
                         long size=0;for(Bitmap b:new Bitmap[]{entry.background,entry.foreground,entry.mono,entry.notification})if(b!=null)size+=b.getAllocationByteCount();
                         // ponytail: exceptionally large matching libraries retain originals past this bound, never publish blurred replacements.
@@ -135,6 +140,10 @@ public final class IconAssets {
 
     /** Worker/UI preview entry, never call this in a draw callback or under a window lock. */
     static Entry resolve(Context c,String pkg,IconPolicy policy,String generation,int side,boolean local) throws Exception {
+        String notificationGeneration=local?IconLayerStore.read(c).getString("notificationGeneration",""):"";
+        return resolve(c,pkg,policy,generation,side,local,notificationGeneration);
+    }
+    static Entry resolve(Context c,String pkg,IconPolicy policy,String generation,int side,boolean local,String notificationGeneration) throws Exception {
         ApplicationInfo info=c.getPackageManager().getApplicationInfo(pkg,0);
         Drawable original=c.getPackageManager().getApplicationIcon(info);
         if(policy.color==IconPolicy.ORIGINAL&&policy.monochrome==IconPolicy.UNCHANGED&&policy.notification==IconPolicy.UNCHANGED)return null;
@@ -151,7 +160,7 @@ public final class IconAssets {
             if(customBg!=null&&customFg!=null){bg=customBg;fg=customFg;nativeColor=false;colorChanged=true;}
         }else if(packed){
             try{Bitmap pairBg=library(c,generation,pkg,0,side,local),pairFg=library(c,generation,pkg,1,side,local);bg=pairBg;fg=pairFg;nativeColor=false;colorChanged=true;}
-            catch(FileNotFoundException absent){} // Missing assets retain the application original; no automatic algorithm fallback.
+            catch(IOException invalid){android.util.Log.w("NcIconAssets","desktop library unavailable: "+pkg);} // Keep native desktop layers; an independent notification library may still be usable.
         }else if(generated){
             Bitmap customBg=custom(c,policy.generatedBackground,side,local),customFg=custom(c,policy.generatedForeground,side,local);
             if(customBg!=null&&customFg!=null){bg=customBg;fg=customFg;nativeColor=false;colorChanged=true;}
@@ -162,6 +171,11 @@ public final class IconAssets {
         Bitmap notice=null;
         if(policy.notification==IconPolicy.UPLOAD){Bitmap custom=custom(c,policy.notificationImage,side,local);if(custom!=null)notice=IconImages.monochrome(custom,true);}
         else if(policy.notification==IconPolicy.FOLLOW){notice=IconImages.monochrome(nativeColor&&nativeMono!=null?nativeMono:fg,true);}
+        else if(policy.notification==IconPolicy.NOTIFICATION_LIBRARY&&!notificationGeneration.isEmpty()){
+            // This route never falls through to the desktop foreground: missing/unusable assets retain native notifications.
+            try{notice=IconImages.monochrome(library(c,notificationGeneration,pkg,1,side,local),true);}
+            catch(IOException invalid){android.util.Log.w("NcIconAssets","notification library unavailable: "+pkg);}
+        }
         // A legacy flat Drawable has no independent themed slot. Leaving its color untouched also preserves native wrapping.
         if(policy.color==IconPolicy.ORIGINAL&&!(original instanceof AdaptiveIconDrawable))monoChanged=false;
         return colorChanged||monoChanged||notice!=null?new Entry(IconImages.compactSolid(bg),fg,mono,notice,colorChanged,monoChanged,nativeColor,IconPolicy.notificationScale(policy.notificationScale)):null;

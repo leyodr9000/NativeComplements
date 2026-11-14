@@ -39,7 +39,11 @@ class IconBatchUiTest {
         val folder = File(context.createDeviceProtectedStorageContext().filesDir, "icon-libraries/$generation")
         folder.mkdirs()
         File(folder, "index.json").writeText("[\"test.icons.one\",\"test.icons.notinstalled\"]")
-        IconLayerStore.prefs(context).edit().clear().putString("generation", generation).commit()
+        val notificationGeneration = "n_" + java.util.UUID.randomUUID().toString().replace("-", "")
+        val notificationFolder = File(folder.parentFile, notificationGeneration).apply { mkdirs() }
+        File(notificationFolder, "index.json").writeText("[\"test.icons.two\",\"test.icons.notinstalled\"]")
+        IconLayerStore.prefs(context).edit().clear().putString("generation", generation)
+            .putString("notificationGeneration", notificationGeneration).commit()
         var selected = setOf("test.icons.two")
         compose.setContent {
             ComplementsTheme(dynamic = false) {
@@ -52,6 +56,11 @@ class IconBatchUiTest {
         }
         compose.onNodeWithText("选择素材库匹配应用").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("test.icons.one"), selected) }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("1 个已安装应用；替换当前选择").fetchSemanticsNodes().size == 2
+        }
+        compose.onNodeWithText("选择通知库匹配应用").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(setOf("test.icons.two"), selected) }
     }
 
     @Test fun batchCanChangeOnlyNotificationSizeAndPreserveModes() {

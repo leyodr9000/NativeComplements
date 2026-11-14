@@ -16,18 +16,17 @@ import java.util.zip.*;
 
 /** One active library. Immutable generations make publication a single preference transaction. */
 public final class IconLibrary {
-    private static String cachedGeneration = "";
-    private static ArrayList<String> cachedPackages = new ArrayList<>();
+    private static final Map<String,ArrayList<String>> cachedPackages=new LinkedHashMap<>(4,.75f,true);
     private IconLibrary() {}
     static File root(Context c) { return new File(c.createDeviceProtectedStorageContext().getFilesDir(), "icon-libraries"); }
-    static boolean validGeneration(String value) { return value != null && value.matches("g_[a-f0-9]{32}"); }
+    static boolean validGeneration(String value) { return value != null && value.matches("[gn]_[a-f0-9]{32}"); }
     static File generation(Context c, String value) throws IOException {
         if (!validGeneration(value)) throw new IOException("图标库标识无效");
         return new File(root(c), value);
     }
     public static synchronized ArrayList<String> packages(Context c, String generation) {
         if (generation.isEmpty()) return new ArrayList<>();
-        if (!generation.equals(cachedGeneration)) {
+        if (!cachedPackages.containsKey(generation)) {
             ArrayList<String> result = new ArrayList<>();
             try {
                 File index = new File(generation(c, generation), "index.json");
@@ -39,9 +38,10 @@ public final class IconLibrary {
                     if (IconArchive.validPackage(pkg)) result.add(pkg);
                 }
             } catch (Exception ignored) { return result; }
-            cachedPackages = result; cachedGeneration = generation;
+            cachedPackages.put(generation,result);
+            if(cachedPackages.size()>4)cachedPackages.remove(cachedPackages.keySet().iterator().next());
         }
-        return new ArrayList<>(cachedPackages);
+        return new ArrayList<>(cachedPackages.get(generation));
     }
 
     public static IconArchive prepare(Context c, Uri uri, boolean tree, AtomicBoolean cancel, IconArchive.Progress progress) throws IOException {
@@ -102,9 +102,14 @@ public final class IconLibrary {
 
     public static Result install(Context c, IconArchive archive, IconArchive.Source source, AtomicBoolean cancel,
         IconArchive.Progress progress) throws IOException {
+        return install(c,archive,source,cancel,progress,false);
+    }
+    /** Independent notification slot; failed/cancelled imports never replace either active library. */
+    public static Result install(Context c, IconArchive archive, IconArchive.Source source, AtomicBoolean cancel,
+        IconArchive.Progress progress, boolean notification) throws IOException {
         if (source.pairs.size() > 10000) throw new IOException("单个图标源超过 10000 个应用");
         String id = UUID.randomUUID().toString().replace("-", "");
-        File pending = new File(root(c), "pending-" + id), destination = generation(c, "g_" + id);
+        File pending = new File(root(c), "pending-" + id), destination = generation(c, (notification?"n_":"g_") + id);
         if (!pending.mkdirs()) throw new IOException("创建图标库失败");
         ArrayList<String> packages = new ArrayList<>();
         int skipped = 0, failed = 0, done = 0; long bytes = 0;
@@ -132,10 +137,18 @@ public final class IconLibrary {
             synchronized (IconLibrary.class) {
                 IconArchive.check(cancel);
                 if (!pending.renameTo(destination)) throw new IOException("发布图标库失败");
-                var restore = restorePackages(c);
-                if (!IconLayerStore.prefs(c).edit().putString("generation", destination.getName())
-                    .putString("title", source.title).putInt("count", packages.size()).putBoolean("enabled", true)
-                    .putStringSet("restore", restore).commit()) {
+                var prefs=IconLayerStore.prefs(c);
+                var previous=new HashMap<String,Object>();
+                String[] changedKeys=notification?new String[]{"notificationGeneration","notificationTitle","notificationCount"}
+                    :new String[]{"generation","title","count","enabled","restore"};
+                var all=prefs.getAll();for(String key:changedKeys)previous.put(key,all.get(key));
+                var editor=prefs.edit();
+                if(notification)editor.putString("notificationGeneration",destination.getName())
+                    .putString("notificationTitle",source.title).putInt("notificationCount",packages.size());
+                else editor.putString("generation",destination.getName()).putString("title",source.title)
+                    .putInt("count",packages.size()).putBoolean("enabled",true).putStringSet("restore",restorePackages(c));
+                if (!editor.commit()) {
+                    restorePreferences(prefs,previous);
                     IconArchive.delete(destination); throw new IOException("保存图标设置失败");
                 }
             }
@@ -143,6 +156,19 @@ public final class IconLibrary {
             progress.update("导入完成", source.pairs.size(), source.pairs.size());
             return new Result(packages.size(), skipped, failed);
         } finally { IconArchive.delete(pending); }
+    }
+    /** commit() may fail after Android has already updated its in-memory map. Restore the published slot before discarding files. */
+    static void restorePreferences(SharedPreferences prefs,Map<String,Object> previous) {
+        var editor=prefs.edit();
+        for(var entry:previous.entrySet()){
+            String key=entry.getKey();Object value=entry.getValue();
+            if(value==null)editor.remove(key);
+            else if(value instanceof String text)editor.putString(key,text);
+            else if(value instanceof Integer number)editor.putInt(key,number);
+            else if(value instanceof Boolean flag)editor.putBoolean(key,flag);
+            else if(value instanceof Set<?> values){var strings=new HashSet<String>();for(Object item:values)strings.add((String)item);editor.putStringSet(key,strings);}
+        }
+        editor.apply();
     }
     private static class ImportLimitException extends IOException { ImportLimitException() { super("图像总量超过导入限制"); } }
     private static void validate(byte[] bytes) throws IOException {
@@ -163,7 +189,23 @@ public final class IconLibrary {
         IconLayerStore.prefs(c).edit().remove("restore").apply();
         File[] files = root(c).listFiles();
         if (files != null) for (File f : files)
-            if (validGeneration(f.getName()) && !f.getName().equals(loaded)) IconArchive.delete(f);
+            if (f.getName().startsWith("g_") && validGeneration(f.getName()) && !f.getName().equals(loaded)) IconArchive.delete(f);
+    }
+    /** SystemUI acknowledges only a successfully loaded notification snapshot. */
+    static synchronized void acknowledgeNotification(Context c,String loaded) {
+        if(!loaded.equals(IconLayerStore.prefs(c).getString("notificationGeneration","")))return;
+        File[] files=root(c).listFiles();
+        if(files!=null)for(File f:files)
+            if(f.getName().startsWith("n_")&&validGeneration(f.getName())&&!f.getName().equals(loaded))IconArchive.delete(f);
+    }
+    public static synchronized void removeNotification(Context c) {
+        var prefs=IconLayerStore.prefs(c);var previous=new HashMap<String,Object>();var all=prefs.getAll();
+        for(String key:new String[]{"notificationGeneration","notificationTitle","notificationCount"})previous.put(key,all.get(key));
+        if(!prefs.edit().remove("notificationGeneration").remove("notificationTitle")
+            .remove("notificationCount").commit()){
+            restorePreferences(prefs,previous);throw new IllegalStateException("移除通知图标库失败");
+        }
+        IconLayerStore.refresh(c);
     }
     public static synchronized void remove(Context c) {
         var restore = restorePackages(c);

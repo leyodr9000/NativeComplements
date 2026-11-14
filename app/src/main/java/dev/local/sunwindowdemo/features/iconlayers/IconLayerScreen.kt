@@ -38,6 +38,9 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
     var state by remember { mutableStateOf(IconLayerStore.read(context)) }
     val installed = apps
     var library by remember { mutableStateOf(emptySet<String>()) }
+    var notificationLibrary by remember { mutableStateOf(emptySet<String>()) }
+    var importNotification by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var removeNotification by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
@@ -50,6 +53,7 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
         while (true) {
             state = withContext(Dispatchers.IO) { IconLayerStore.read(context) }
             library = withContext(Dispatchers.IO) { IconLibrary.packages(context, state.getString("generation", "")).toSet() }
+            notificationLibrary = withContext(Dispatchers.IO) { IconLibrary.packages(context, state.getString("notificationGeneration", "")).toSet() }
             delay(1500)
         }
     }
@@ -62,7 +66,7 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    try { IconLibrary.install(context, archive, source, cancel, reporter) } finally { archive.close() }
+                    try { IconLibrary.install(context, archive, source, cancel, reporter, importNotification) } finally { archive.close() }
                 }
                 message = result.toString(); refreshState()
             } catch (_: CancellationException) { message = "导入已取消，原图标库已保留" }
@@ -96,8 +100,15 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
                     }
                     SettingRow("导入图标库",
                         if (state.getInt("count") > 0) "${state.getInt("count")} 个图标 · 已安装匹配 ${installed.count { it.packageName in library }} 个" else "ZIP 或文件夹",
-                        onClick = if (busy || pending != null) null else { { showImport = true } },
+                        onClick = if (busy || pending != null) null else { { importNotification = false; showImport = true } },
                         leading = { Icon(Icons.Default.Add, null) })
+                    SettingRow("导入通知图标库",
+                        if (state.getInt("notificationCount") > 0) "${state.getInt("notificationCount")} 个图标 · 已安装匹配 ${installed.count { it.packageName in notificationLibrary }} 个"
+                        else "独立于桌面素材库，使用完美图标 ZIP 或文件夹",
+                        onClick = if (busy || pending != null) null else ({ importNotification = true; showImport = true }),
+                        leading = { Icon(Icons.Default.Add, null) })
+                    if (state.getInt("notificationCount") > 0) SettingRow("移除通知图标库", "保留桌面图标库与逐应用设置",
+                        onClick = if (busy || pending != null) null else ({ removeNotification = true }))
                 }
                 if (busy) {
                     Spacer(Modifier.height(16.dp))
@@ -111,6 +122,9 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
                     SettingsGroup {
                         SettingRow("选择素材库匹配应用", "${matched.size} 个已安装应用；替换当前选择",
                             onClick = if (matched.isEmpty() || busy) null else ({ onSelectLibrary(matched) }))
+                        val noticeMatched = installed.map { it.packageName }.filter { it in notificationLibrary }.toSet()
+                        SettingRow("选择通知库匹配应用", "${noticeMatched.size} 个已安装应用；替换当前选择",
+                            onClick = if (noticeMatched.isEmpty() || busy) null else ({ onSelectLibrary(noticeMatched) }))
                     }
                 }
                 if (message.isNotBlank()) Hint(message)
@@ -140,7 +154,7 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
     }
     if (showImport) ModalBottomSheet(onDismissRequest = { showImport = false }) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-            Text("导入图标库", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+            Text(if (importNotification) "导入通知图标库" else "导入图标库", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
             SettingsGroup {
                 SettingRow("选择 ZIP 文件", onClick = {
                     showImport = false
@@ -153,6 +167,16 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
             }
         }
     }
+    if (removeNotification) AlertDialog(onDismissRequest = { removeNotification = false },
+        title = { Text("移除通知图标库？") }, text = { Text("使用通知库的应用将保留原生通知图标，桌面图标不变。") },
+        confirmButton = { TextButton(onClick = {
+            removeNotification = false; busy = true
+            scope.launch {
+                try { withContext(Dispatchers.IO) { IconLibrary.removeNotification(context) }; refreshState() }
+                catch (e: Exception) { message = e.message ?: "移除失败" }
+                finally { busy = false }
+            }
+        }) { Text("移除") } }, dismissButton = { TextButton(onClick = { removeNotification = false }) { Text("取消") } })
     pending?.let { archive ->
         fun dismiss() { pending = null; scope.launch(Dispatchers.IO) { archive.close() } }
         AlertDialog(onDismissRequest = { dismiss() }, title = { Text("选择图标源") },
@@ -182,7 +206,7 @@ fun IconBatchDialog(packages: Set<String>, onDismiss: () -> Unit, onApplied: () 
                 IconBatchModes("桌面图标", color, listOf(-1 to "保持现有", IconPolicy.AUTO to "自动",
                     IconPolicy.ALGORITHM to "算法补全", IconPolicy.ORIGINAL to "原图"), !busy) { color = it }
                 IconBatchModes("莫奈图标", monochrome, masks, !busy) { monochrome = it }
-                IconBatchModes("通知图标", notification, masks, !busy) { notification = it }
+                IconBatchModes("通知图标", notification, masks + (IconPolicy.NOTIFICATION_LIBRARY to "通知图标库"), !busy) { notification = it }
                 GroupTitle("通知图标大小")
                 SettingsGroup {
                     SettingRow(if (changeNotificationScale) "统一设置大小" else "保持各应用现有大小",

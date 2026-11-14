@@ -7,7 +7,7 @@ import java.util.*;
 /** Independent per-app choices; replacing a library never replaces these overrides. */
 public final class IconPolicy {
     public static final int AUTO = 0, MANUAL = 1, ALGORITHM = 2, ORIGINAL = 3;
-    public static final int FOLLOW = 0, UPLOAD = 1, UNCHANGED = 2;
+    public static final int FOLLOW = 0, UPLOAD = 1, UNCHANGED = 2, NOTIFICATION_LIBRARY = 3;
     public static final int NOTIFICATION_SCALE_MIN = 50, NOTIFICATION_SCALE_MAX = 200, NOTIFICATION_SCALE_DEFAULT = 100;
     public int color, monochrome, notification=UNCHANGED;
     public int notificationScale = NOTIFICATION_SCALE_DEFAULT;
@@ -31,7 +31,7 @@ public final class IconPolicy {
         if (json == null) return p;
         p.color = range(json.optInt("color"), 3);
         p.monochrome = range(json.optInt("monochrome"), 2);
-        p.notification = range(json.optInt("notification",UNCHANGED), 2);
+        p.notification = range(json.optInt("notification",UNCHANGED), NOTIFICATION_LIBRARY);
         p.notificationScale = notificationScale(json.optInt("notificationScale", NOTIFICATION_SCALE_DEFAULT));
         p.background = asset(json.optString("background")); p.foreground = asset(json.optString("foreground"));
         p.monoImage = asset(json.optString("monoImage")); p.notificationImage = asset(json.optString("notificationImage"));
@@ -68,7 +68,7 @@ public final class IconPolicy {
         if (packages.isEmpty() || packages.size() > 10000 || packages.stream().anyMatch(pkg -> !IconArchive.validPackage(pkg)))
             throw new IllegalArgumentException("packages");
         if (color != -1 && color != AUTO && color != ALGORITHM && color != ORIGINAL
-                || !batchMask(monochrome) || !batchMask(notification)
+                || !batchMask(monochrome) || !(batchMask(notification) || notification == NOTIFICATION_LIBRARY)
                 || notificationScale != -1 && (notificationScale < NOTIFICATION_SCALE_MIN || notificationScale > NOTIFICATION_SCALE_MAX))
             throw new IllegalArgumentException("mode or notification scale");
         if (color == -1 && monochrome == -1 && notification == -1 && notificationScale == -1) return;
@@ -92,7 +92,7 @@ public final class IconPolicy {
     private static JSONObject json(IconPolicy p) throws org.json.JSONException {
         JSONObject json = new JSONObject();
         json.put("color", range(p.color,3)); json.put("monochrome",range(p.monochrome,2));
-        json.put("notification",range(p.notification,2));
+        json.put("notification",range(p.notification,NOTIFICATION_LIBRARY));
         json.put("notificationScale",notificationScale(p.notificationScale));
         json.put("background",asset(p.background)); json.put("foreground",asset(p.foreground));
         json.put("monoImage",asset(p.monoImage)); json.put("notificationImage",asset(p.notificationImage));
