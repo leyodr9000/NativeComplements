@@ -32,9 +32,11 @@ class SidebarUiTest {
         compose.onNodeWithText("保存").performClick()
         assertEquals(listOf("com.tencent.mobileqq", "com.tencent.mm"), SidebarSettings.read(c).apps())
         assertFalse(SidebarSettings.read(c).enabled())
-        compose.onAllNodesWithText("下移").onFirst().performScrollTo().performClick()
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("下移"))
+        compose.onAllNodesWithText("下移").onFirst().performClick()
         assertEquals(listOf("com.tencent.mm", "com.tencent.mobileqq"), SidebarSettings.read(c).apps())
-        compose.onNodeWithText("启用小窗侧边栏").performScrollTo().performClick()
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("启用小窗侧边栏"))
+        compose.onNodeWithText("启用小窗侧边栏").performClick()
         assertTrue(SidebarSettings.read(c).enabled())
     }
 

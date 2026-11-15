@@ -108,8 +108,9 @@ class IconBatchUiTest {
         }
         compose.onNodeWithContentDescription("通知图标大小").assertDoesNotExist()
         compose.onNodeWithText("恢复默认大小").assertDoesNotExist()
-        compose.onNodeWithText("通知大小统一使用图标适配首页的全局设置；100% 保持当前默认效果。")
-            .performScrollTo().assertIsDisplayed()
+        val explanation = "通知大小统一使用图标适配首页的全局设置；100% 保持当前默认效果。"
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText(explanation))
+        compose.onNodeWithText(explanation).assertIsDisplayed()
     }
 
     @Test fun batchDialogOnlyChangesModesAndHasNoSizeControl() {
