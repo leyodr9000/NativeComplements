@@ -22,7 +22,8 @@ final class SidebarHost implements AutoCloseable {
     private View handle,panel;
     private SidebarSettings.State settings;
     private List<AppCatalog.App> apps=List.of();
-    private boolean allowed,closed;
+    private boolean allowed,closed,handleRestored;
+    private final Runnable shrink=()->{if(panel==null&&handleRestored){handleRestored=false;removeHandle();showHandle();}};
     private long leaseUntil;
     private String owner="";
     private final Runnable expire=()->{if(android.os.SystemClock.elapsedRealtime()>=leaseUntil){allowed=false;hide();}};
@@ -56,6 +57,7 @@ final class SidebarHost implements AutoCloseable {
         int top=in.top+dp(8),bottom=b.height()-in.bottom-dp(8);
         p.width=Math.min(width,Math.max(1,right-left));p.height=Math.min(height,Math.max(1,bottom-top));
         p.x=SidebarPolicy.horizontal(b.width(),p.width,in.left+dp(2),in.right+dp(2),settings.right(),collapsed);
+        if(collapsed&&handleRestored){int gap=Math.min(dp(settings.edgeGap()),Math.max(0,b.width()-p.width));p.x=settings.right()?b.width()-p.width-gap:gap;}
         p.y=SidebarPolicy.top(top,Math.max(top+1,bottom),p.height,settings.position());
         p.layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
     }
@@ -64,9 +66,11 @@ final class SidebarHost implements AutoCloseable {
     }
     private void showHandle(){
         if(!canShow())return;
-        View view=new View(context);view.setContentDescription("展开小窗侧边栏");
-        view.setBackground(background(0xff90a4ce,settings.opacity(),8));
-        view.setOnClickListener(v->expand());
+        FrameLayout view=new FrameLayout(context);view.setContentDescription("展开小窗侧边栏");
+        View stripe=new View(context);stripe.setBackground(background(0xff90a4ce,settings.opacity(),8));
+        int height=handleRestored?settings.handleHeight():Math.max(24,settings.handleHeight()/2);
+        view.addView(stripe,new FrameLayout.LayoutParams(dp(handleRestored?10:4),dp(height),Gravity.CENTER_VERTICAL|(settings.right()?Gravity.RIGHT:Gravity.LEFT)));
+        view.setOnClickListener(v->handleClick());
         view.setOnTouchListener(new View.OnTouchListener(){
             float down;boolean dragged;
             @Override public boolean onTouch(View v,MotionEvent e){
@@ -74,7 +78,7 @@ final class SidebarHost implements AutoCloseable {
                     case MotionEvent.ACTION_DOWN->{down=e.getRawX();dragged=false;return true;}
                     case MotionEvent.ACTION_MOVE->{
                         float inward=(e.getRawX()-down)*(settings.right()?-1:1);
-                        if(!dragged&&inward>=dp(16)){dragged=true;expand();}return true;
+                        if(!dragged&&inward>=dp(16)){dragged=true;handleClick();}return true;
                     }
                     case MotionEvent.ACTION_UP->{if(!dragged)v.performClick();return true;}
                     case MotionEvent.ACTION_CANCEL->{return true;}
@@ -82,10 +86,16 @@ final class SidebarHost implements AutoCloseable {
                 return true;
             }
         });
-        WindowManager.LayoutParams p=params(dp(10),dp(settings.handleHeight()),"NativeComplements-sidebar-handle");
-        place(p,dp(10),dp(settings.handleHeight()),true);
+        WindowManager.LayoutParams p=params(dp(28),dp(height+16),"NativeComplements-sidebar-handle");
+        place(p,dp(28),dp(height+16),true);
         view.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->changed.run());
         try{wm.addView(view,p);handle=view;changed.run();}catch(RuntimeException failure){android.util.Log.w("NcSidebar","handle unavailable",failure);}
+    }
+    private void handleClick(){
+        if(!canShow())return;
+        if(handleRestored){expand();return;}
+        handleRestored=true;removeHandle();showHandle();
+        main.removeCallbacks(shrink);main.postDelayed(shrink,3000);
     }
     private List<AppCatalog.App> selected(){
         List<AppCatalog.App> result=new ArrayList<>();
@@ -94,7 +104,7 @@ final class SidebarHost implements AutoCloseable {
     }
     void expand(){
         if(!canShow()||panel!=null)return;
-        removeHandle();
+        main.removeCallbacks(shrink);removeHandle();
         LinearLayout column=new LinearLayout(context);column.setOrientation(LinearLayout.VERTICAL);column.setGravity(Gravity.CENTER_HORIZONTAL);
         column.setPadding(dp(8),dp(8),dp(8),dp(8));column.setBackground(background(0xff303744,settings.opacity(),24));
         ScrollView scroller=new ScrollView(context){
@@ -125,8 +135,8 @@ final class SidebarHost implements AutoCloseable {
         scroller.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->changed.run());
         try{wm.addView(scroller,p);panel=scroller;changed.run();}catch(RuntimeException failure){showHandle();}
     }
-    void collapse(){removePanel();if(canShow()&&handle==null)showHandle();}
-    void hide(){removePanel();removeHandle();}
+    void collapse(){handleRestored=false;main.removeCallbacks(shrink);removePanel();if(canShow()&&handle==null)showHandle();}
+    void hide(){handleRestored=false;main.removeCallbacks(shrink);removePanel();removeHandle();}
     boolean expanded(){return panel!=null;}
     int[] protectedRects(){
         View v=panel!=null?panel:handle;if(v==null||!v.isAttachedToWindow())return new int[0];

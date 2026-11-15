@@ -77,6 +77,23 @@ public class SidebarHostTest {
         WindowManager.LayoutParams after=(WindowManager.LayoutParams)returned.getLayoutParams();
         assertEquals(0,after.x);assertEquals(restingY,after.y);
     }
+    @Test public void firstTapOnlyRestoresHandleSecondTapOpensAndIdleShrinksAgain()throws Exception{
+        host=new SidebarHost(c,pkg->{},()->{});
+        var s=state(false,List.of("com.tencent.mobileqq"));
+        host.update(s,List.of(new AppCatalog.App("com.tencent.mobileqq","QQ",null)),true,"com.tencent.tmgp.sgame",SystemClock.elapsedRealtime()+10000);
+        View mini=views().stream().filter(v->"展开小窗侧边栏".contentEquals(v.getContentDescription()==null?"":v.getContentDescription())).findFirst().orElseThrow();
+        assertEquals(0,((WindowManager.LayoutParams)mini.getLayoutParams()).x);
+        mini.performClick();assertFalse(host.expanded());
+        View normal=views().stream().filter(v->"展开小窗侧边栏".contentEquals(v.getContentDescription()==null?"":v.getContentDescription())).findFirst().orElseThrow();
+        assertEquals(Math.round(6*c.getResources().getDisplayMetrics().density),((WindowManager.LayoutParams)normal.getLayoutParams()).x);
+        normal.performClick();assertTrue(host.expanded());host.collapse();
+        View next=views().stream().filter(v->"展开小窗侧边栏".contentEquals(v.getContentDescription()==null?"":v.getContentDescription())).findFirst().orElseThrow();
+        next.performClick();assertFalse(host.expanded());
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(3000));
+        View shrunk=views().stream().filter(v->"展开小窗侧边栏".contentEquals(v.getContentDescription()==null?"":v.getContentDescription())).findFirst().orElseThrow();
+        assertEquals(0,((WindowManager.LayoutParams)shrunk.getLayoutParams()).x);
+        shrunk.performClick();assertFalse(host.expanded());
+    }
     @Test public void changingForegroundClosesExpandedStripAndOnlyInstalledChosenAppsAreRendered()throws Exception{
         host=new SidebarHost(c,pkg->{},()->{});
         var app=new AppCatalog.App("com.tencent.mobileqq","QQ",null);var s=state(true,List.of("com.missing.app",app.pkg));

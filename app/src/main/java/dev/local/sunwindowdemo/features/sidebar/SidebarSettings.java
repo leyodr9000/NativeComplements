@@ -8,7 +8,11 @@ import java.util.*;
 public final class SidebarSettings {
     private SidebarSettings() {}
     public record State(boolean enabled,boolean landscapeOnly,boolean right,int opacity,int position,
-                        int handleHeight,int iconSize,Set<String> hosts,List<String> apps) {}
+                        int handleHeight,int iconSize,Set<String> hosts,List<String> apps,int edgeGap) {
+        public State(boolean enabled,boolean landscapeOnly,boolean right,int opacity,int position,int handleHeight,int iconSize,Set<String> hosts,List<String> apps){
+            this(enabled,landscapeOnly,right,opacity,position,handleHeight,iconSize,hosts,apps,6);
+        }
+    }
     public static SharedPreferences prefs(Context c){return c.getSharedPreferences("corner",0);}
     public static State read(Context c){return read(prefs(c));}
     static State read(SharedPreferences p){
@@ -19,7 +23,7 @@ public final class SidebarSettings {
             if(Wire.allowedPackage(pkg)&&!apps.contains(pkg)&&apps.size()<12)apps.add(pkg);
         return new State(p.getBoolean("sidebarEnabled",false),p.getBoolean("sidebarLandscapeOnly",true),
             p.getBoolean("sidebarRight",true),number(p,"sidebarOpacity",60,10,100),number(p,"sidebarPosition",50,0,100),
-            number(p,"sidebarHandleHeight",72,40,140),number(p,"sidebarIconSize",40,32,56),Set.copyOf(hosts),List.copyOf(apps));
+            number(p,"sidebarHandleHeight",72,40,140),number(p,"sidebarIconSize",40,32,56),Set.copyOf(hosts),List.copyOf(apps),number(p,"sidebarEdgeGap",6,0,32));
     }
     private static int number(SharedPreferences p,String key,int def,int min,int max){return Math.max(min,Math.min(max,p.getInt(key,def)));}
     public static void flag(Context c,String key,boolean value){
@@ -29,7 +33,7 @@ public final class SidebarSettings {
     public static void number(Context c,String key,int value){
         int min,max;
         switch(key){
-            case "sidebarOpacity"->{min=10;max=100;}case "sidebarPosition"->{min=0;max=100;}
+            case "sidebarEdgeGap"->{min=0;max=32;}case "sidebarOpacity"->{min=10;max=100;}case "sidebarPosition"->{min=0;max=100;}
             case "sidebarHandleHeight"->{min=40;max=140;}case "sidebarIconSize"->{min=32;max=56;}
             default->throw new IllegalArgumentException("key");
         }
@@ -47,7 +51,7 @@ public final class SidebarSettings {
         if(!editor.commit()){
             // Android may have applied the new map in memory even when the disk write failed.
             var rollback=p.edit();
-            for(String key:List.of("sidebarEnabled","sidebarLandscapeOnly","sidebarRight","sidebarOpacity","sidebarPosition","sidebarHandleHeight","sidebarIconSize","sidebarHosts","sidebarApps")){
+            for(String key:List.of("sidebarEnabled","sidebarLandscapeOnly","sidebarRight","sidebarOpacity","sidebarPosition","sidebarHandleHeight","sidebarIconSize","sidebarHosts","sidebarApps","sidebarEdgeGap")){
                 Object old=before.get(key);
                 if(old==null)rollback.remove(key);
                 else if(old instanceof Boolean flag)rollback.putBoolean(key,flag);

@@ -35,6 +35,12 @@ public class SidebarSettingsTest {
         assertEquals(List.of("com.tencent.mm","com.tencent.mobileqq"),result.apps());
         assertEquals(Set.of("com.tencent.tmgp.sgame"),result.hosts());assertTrue(result.enabled());assertFalse(result.right());assertEquals(35,result.opacity());
     }
+    @Test public void restoredHandleGapIsClampedAndStoredInExistingSnapshot(){
+        assertEquals(6,SidebarSettings.read(c).edgeGap());
+        SidebarSettings.number(c,"sidebarEdgeGap",12);assertEquals(12,SidebarSettings.read(c).edgeGap());
+        assertThrows(IllegalArgumentException.class,()->SidebarSettings.number(c,"sidebarEdgeGap",33));
+        assertEquals(12,SidebarSettings.read(c).edgeGap());
+    }
     @Test public void invalidUpdatesDoNotPublish(){
         SidebarSettings.apps(c,List.of("com.tencent.mm"));
         assertThrows(IllegalArgumentException.class,()->SidebarSettings.apps(c,List.of("invalid/pkg")));

@@ -44,6 +44,9 @@ fun SidebarScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp) {
                 SliderRow("把手垂直位置", "0% 顶部，100% 底部，避开可见系统栏和刘海", state.position(), 0..100, "%") {
                     save { SidebarSettings.number(context, "sidebarPosition", it) }
                 }
+                SliderRow("把手距屏幕边缘", "恢复后的把手向内留出的距离；贴边小条第一次点击仅恢复，第二次才展开，空闲3秒自动缩回", state.edgeGap(), 0..32, " dp") {
+                    save { SidebarSettings.number(context, "sidebarEdgeGap", it) }
+                }
                 SliderRow("把手长度", value = state.handleHeight(), range = 40..140, unit = " dp") {
                     save { SidebarSettings.number(context, "sidebarHandleHeight", it) }
                 }
@@ -74,7 +77,7 @@ fun SidebarScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp) {
             }
         }
         item {
-            Hint("点把手展开，点应用后自动收起。复用现有小窗与迷你窗恢复逻辑，横屏默认在左侧显示；可继续用原小窗控制条调整、最小化和挂起。锁屏、键盘、通知面板等系统界面显示时暂时隐藏，不提供录屏或游戏加速功能。")
+            Hint("贴边小条点一次恢复把手，再点一次展开；空闲3秒自动缩回，点应用后自动收起。复用现有小窗与迷你窗恢复逻辑，横屏默认在左侧显示；可继续用原小窗控制条调整、最小化和挂起。锁屏、键盘、通知面板等系统界面显示时暂时隐藏，不提供录屏或游戏加速功能。")
             if (state.hosts().isEmpty()) Hint("尚未指定显示应用，侧边栏不会出现。")
             if (error.isNotBlank()) Hint(error)
         }
