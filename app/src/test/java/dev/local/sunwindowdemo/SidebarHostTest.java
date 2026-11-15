@@ -94,6 +94,19 @@ public class SidebarHostTest {
         assertEquals(0,((WindowManager.LayoutParams)shrunk.getLayoutParams()).x);
         shrunk.performClick();assertFalse(host.expanded());
     }
+    @Test public void moreIsAlwaysFirstAndOpensUnpinnedAppWithoutChangingConfiguredList()throws Exception{
+        List<String> pinnedCalls=new ArrayList<>(),allCalls=new ArrayList<>();
+        host=new SidebarHost(c,pinnedCalls::add,()->{},pkg->{assertFalse(host.expanded());allCalls.add(pkg);});
+        var s=state(false,List.of());var qq=new AppCatalog.App("com.tencent.mobileqq","QQ",null);
+        host.update(s,List.of(qq),true,"com.tencent.tmgp.sgame",SystemClock.elapsedRealtime()+10000);host.expand();
+        View root=views().stream().filter(v->v.getLayoutParams() instanceof WindowManager.LayoutParams p&&"NativeComplements-sidebar-panel".contentEquals(p.getTitle())).findFirst().orElseThrow();
+        View more=find(root,"侧边栏更多应用");assertNotNull(more);assertSame(more,((ViewGroup)root).getChildAt(0));
+        more.performClick();assertTrue(host.expanded());
+        View full=views().stream().filter(v->v.getLayoutParams() instanceof WindowManager.LayoutParams p&&"NativeComplements-sidebar-panel".contentEquals(p.getTitle())).findFirst().orElseThrow();
+        assertNotNull(find(full,"返回侧边栏常用应用"));
+        View item=find(full,"小窗打开 QQ");assertNotNull(item);item.performClick();
+        assertEquals(List.of("com.tencent.mobileqq"),allCalls);assertTrue(pinnedCalls.isEmpty());assertTrue(s.apps().isEmpty());
+    }
     @Test public void changingForegroundClosesExpandedStripAndOnlyInstalledChosenAppsAreRendered()throws Exception{
         host=new SidebarHost(c,pkg->{},()->{});
         var app=new AppCatalog.App("com.tencent.mobileqq","QQ",null);var s=state(true,List.of("com.missing.app",app.pkg));

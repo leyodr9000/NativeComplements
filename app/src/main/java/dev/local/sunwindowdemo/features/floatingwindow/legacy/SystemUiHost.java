@@ -285,7 +285,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         cleaned=false;connected=true;live=this;
         Config.hostPreferences=getSharedPreferences("nativecomplements_corner",Context.MODE_PRIVATE);
         config=new Config(this);wm=getSystemService(WindowManager.class);
-        sidebar=new SidebarHost(this,this::launchSidebar,()->main.post(()->{if(!cleaned)publish(false);}));
+        sidebar=new SidebarHost(this,this::launchSidebar,()->main.post(()->{if(!cleaned)publish(false);}),pkg->launchSidebar(pkg,true));
         controls=new WindowControls(this);miniControls=new WindowControls(this);
         try{suggestions=new SuggestionHost(getApplicationContext());}catch(RuntimeException unavailable){android.util.Log.w("NativeComplements","SUGGESTIONS_HOST_UNAVAILABLE");}
         edgeTouch=new dev.local.sunwindowdemo.features.edgetouch.EdgeTouchHost(getApplicationContext());
@@ -346,10 +346,11 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         SidebarSettings.State state=SidebarSettings.read(config.prefs);
         sidebar.update(state,all,sidebarEligible(state),sidebarForeground,foregroundSeen+2500);
     }
-    private void launchSidebar(String pkg){
+    private void launchSidebar(String pkg){launchSidebar(pkg,false);}
+    private void launchSidebar(String pkg,boolean fromMore){
         // Explicit non-focusable sidebar click; never reuse corner landscape-disable rules.
         SidebarSettings.State state=SidebarSettings.read(config.prefs);
-        if(!state.apps().contains(pkg)||!sidebarEligible(state)||pkg.equals(sidebarForeground)
+        if((!fromMore&&!state.apps().contains(pkg))||!sidebarEligible(state)||pkg.equals(sidebarForeground)
             ||Wire.PKG.equals(pkg)||BackBridge.PACKAGE.equals(pkg)||LauncherGuard.PACKAGE.equals(pkg)
             ||all.stream().noneMatch(app->app.pkg.equals(pkg)))return;
         if(config.blocked().contains(pkg)){Toast.makeText(this,"该应用已在小窗禁用列表中",Toast.LENGTH_SHORT).show();return;}
