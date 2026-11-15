@@ -17,21 +17,22 @@ final class SidebarHost implements AutoCloseable {
     private final Context context;
     private final WindowManager wm;
     private final Handler main=new Handler(Looper.getMainLooper());
-    private final Consumer<String> launch,launchAny;
+    private final Consumer<String> launch;
+    private final Runnable more;
     private final Runnable changed;
     private View handle,panel;
     private SidebarSettings.State settings;
     private List<AppCatalog.App> apps=List.of();
-    private boolean allowed,closed,handleRestored,moreMode;
+    private boolean allowed,closed,handleRestored;
     private final Runnable shrink=()->{if(panel==null&&handleRestored){handleRestored=false;removeHandle();showHandle();}};
     private long leaseUntil;
     private String owner="";
     private final Runnable expire=()->{if(android.os.SystemClock.elapsedRealtime()>=leaseUntil){allowed=false;hide();}};
     SidebarHost(Context context,Consumer<String> launch,Runnable changed){
-        this(context,launch,changed,launch);
+        this(context,launch,changed,()->{});
     }
-    SidebarHost(Context context,Consumer<String> launch,Runnable changed,Consumer<String> launchAny){
-        this.context=context;this.wm=context.getSystemService(WindowManager.class);this.launch=launch;this.changed=changed;this.launchAny=launchAny;
+    SidebarHost(Context context,Consumer<String> launch,Runnable changed,Runnable more){
+        this.context=context;this.wm=context.getSystemService(WindowManager.class);this.launch=launch;this.changed=changed;this.more=more;
     }
     void update(SidebarSettings.State next,List<AppCatalog.App> catalog,boolean show,String foreground,long validUntil){
         if(closed)return;
@@ -102,10 +103,6 @@ final class SidebarHost implements AutoCloseable {
     }
     private List<AppCatalog.App> selected(){
         List<AppCatalog.App> result=new ArrayList<>();
-        if(moreMode){
-            for(AppCatalog.App app:apps)if(!app.pkg.equals(owner)&&!Wire.PKG.equals(app.pkg)&&!BackBridge.PACKAGE.equals(app.pkg)&&!LauncherGuard.PACKAGE.equals(app.pkg))result.add(app);
-            return result;
-        }
         for(String pkg:settings.apps())for(AppCatalog.App app:apps)if(app.pkg.equals(pkg)){result.add(app);break;}
         return result;
     }
@@ -116,10 +113,13 @@ final class SidebarHost implements AutoCloseable {
             @Override public boolean onTouchEvent(MotionEvent e){if(e.getActionMasked()==MotionEvent.ACTION_OUTSIDE){collapse();return true;}return super.onTouchEvent(e);}
         };
         root.setOrientation(LinearLayout.VERTICAL);root.setBackground(background(0xff303744,settings.opacity(),24));
-        TextView more=new TextView(context);more.setText(moreMode?"返回常用":"···\n更多");more.setGravity(Gravity.CENTER);more.setTextColor(Color.WHITE);more.setTextSize(16);
-        more.setContentDescription(moreMode?"返回侧边栏常用应用":"侧边栏更多应用");
-        more.setOnClickListener(v->{if(!canShow())return;boolean next=!moreMode;removePanel();moreMode=next;expand();});
-        root.addView(more,new LinearLayout.LayoutParams(-1,dp(56)));
+        LinearLayout moreButton=new LinearLayout(context);moreButton.setOrientation(LinearLayout.VERTICAL);moreButton.setGravity(Gravity.CENTER);
+        moreButton.addView(FanView.moreIcon(context),new LinearLayout.LayoutParams(dp(settings.iconSize()),dp(settings.iconSize())));
+        TextView moreLabel=new TextView(context);moreLabel.setText("更多");moreLabel.setTextColor(Color.WHITE);moreLabel.setTextSize(11);moreLabel.setGravity(Gravity.CENTER);
+        moreButton.addView(moreLabel,new LinearLayout.LayoutParams(-1,dp(21)));
+        moreButton.setContentDescription("侧边栏更多应用");
+        moreButton.setOnClickListener(v->{if(!canShow())return;collapse();more.run();});
+        root.addView(moreButton,new LinearLayout.LayoutParams(-1,dp(settings.iconSize()+29)));
         LinearLayout column=new LinearLayout(context);column.setOrientation(LinearLayout.VERTICAL);column.setGravity(Gravity.CENTER_HORIZONTAL);
         column.setPadding(dp(8),0,dp(8),dp(8));
         ScrollView scroller=new ScrollView(context){
@@ -133,30 +133,26 @@ final class SidebarHost implements AutoCloseable {
         TextView close=new TextView(context);close.setText("收起");close.setTextColor(Color.WHITE);close.setGravity(Gravity.CENTER);close.setTextSize(12);
         close.setContentDescription("收起小窗侧边栏");close.setOnClickListener(v->collapse());column.addView(close,new LinearLayout.LayoutParams(-1,dp(34)));
         List<AppCatalog.App> selected=selected();
-        LinearLayout gridRow=null;int gridIndex=0;
         for(AppCatalog.App app:selected){
-            if(moreMode&&gridIndex%3==0){gridRow=new LinearLayout(context);column.addView(gridRow,new LinearLayout.LayoutParams(-1,dp(settings.iconSize()+33)));}
             LinearLayout item=new LinearLayout(context);item.setOrientation(LinearLayout.VERTICAL);item.setGravity(Gravity.CENTER);item.setPadding(0,dp(6),0,dp(6));
             ImageView image=new ImageView(context);image.setImageDrawable(app.icon==null?null:app.icon.getConstantState()==null?app.icon:app.icon.getConstantState().newDrawable(context.getResources()).mutate());
             item.addView(image,new LinearLayout.LayoutParams(dp(settings.iconSize()),dp(settings.iconSize())));
             TextView label=new TextView(context);label.setText(app.label);label.setTextColor(Color.WHITE);label.setTextSize(11);label.setMaxLines(1);label.setEllipsize(android.text.TextUtils.TruncateAt.END);label.setGravity(Gravity.CENTER);
             item.addView(label,new LinearLayout.LayoutParams(-1,dp(21)));item.setContentDescription("小窗打开 "+app.label);
-            item.setOnClickListener(v->{if(!canShow())return;boolean any=moreMode;collapse();(any?launchAny:launch).accept(app.pkg);});
-            if(moreMode)gridRow.addView(item,new LinearLayout.LayoutParams(0,-1,1f));
-            else column.addView(item,new LinearLayout.LayoutParams(-1,dp(settings.iconSize()+33)));
-            gridIndex++;
+            item.setOnClickListener(v->{if(!canShow())return;collapse();launch.accept(app.pkg);});
+            column.addView(item,new LinearLayout.LayoutParams(-1,dp(settings.iconSize()+33)));
         }
         if(selected.isEmpty()){
-            TextView empty=new TextView(context);empty.setText(moreMode?"暂无可用应用":"点击顶部更多\n选择其他应用");empty.setTextColor(Color.WHITE);empty.setGravity(Gravity.CENTER);
+            TextView empty=new TextView(context);empty.setText("点击顶部更多\n选择其他应用");empty.setTextColor(Color.WHITE);empty.setGravity(Gravity.CENTER);
             column.addView(empty,new LinearLayout.LayoutParams(-1,dp(80)));
         }
-        int wanted=dp(moreMode?Math.min(640,106+Math.max(1,(selected.size()+2)/3)*(settings.iconSize()+33)):106+Math.max(1,selected.size())*(settings.iconSize()+33));
-        WindowManager.LayoutParams p=params(dp(moreMode?300:settings.iconSize()+40),wanted,"NativeComplements-sidebar-panel");place(p,p.width,wanted,false);
+        int wanted=dp(50+settings.iconSize()+29+Math.max(1,selected.size())*(settings.iconSize()+33));
+        WindowManager.LayoutParams p=params(dp(settings.iconSize()+40),wanted,"NativeComplements-sidebar-panel");place(p,p.width,wanted,false);
         root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->changed.run());
         try{wm.addView(root,p);panel=root;changed.run();}catch(RuntimeException failure){showHandle();}
     }
-    void collapse(){moreMode=false;handleRestored=false;main.removeCallbacks(shrink);removePanel();if(canShow()&&handle==null)showHandle();}
-    void hide(){moreMode=false;handleRestored=false;main.removeCallbacks(shrink);removePanel();removeHandle();}
+    void collapse(){handleRestored=false;main.removeCallbacks(shrink);removePanel();if(canShow()&&handle==null)showHandle();}
+    void hide(){handleRestored=false;main.removeCallbacks(shrink);removePanel();removeHandle();}
     boolean expanded(){return panel!=null;}
     int[] protectedRects(){
         View v=panel!=null?panel:handle;if(v==null||!v.isAttachedToWindow())return new int[0];

@@ -20,6 +20,23 @@ final class FanView extends View {
         try{if(getContext().getTheme().resolveAttribute(attr,v,true))return v.resourceId!=0?getContext().getColor(v.resourceId):v.data;}
         catch(RuntimeException ignored){}return fallback;
     }
+    /** Shared original corner-menu artwork, also used by the sidebar More button. */
+    static void drawMoreIcon(Context context,Canvas canvas,Paint paint,float x,float y,float size,int alpha){
+        int accent=0xff6750a4;android.util.TypedValue value=new android.util.TypedValue();
+        try{if(context.getTheme().resolveAttribute(android.R.attr.colorAccent,value,true))accent=value.resourceId!=0?context.getColor(value.resourceId):value.data;}
+        catch(RuntimeException ignored){}
+        paint.setColor(accent);paint.setAlpha(alpha);canvas.drawCircle(x,y,size/2+5,paint);
+        paint.setColor(Color.luminance(accent)>.45?Color.BLACK:Color.WHITE);paint.setAlpha(alpha);
+        for(int dot=-1;dot<=1;dot++)canvas.drawCircle(x+dot*size*.2f,y,size*.065f,paint);
+    }
+    static View moreIcon(Context context){
+        return new View(context){
+            final Paint iconPaint=new Paint(3);
+            @Override protected void onDraw(Canvas canvas){
+                super.onDraw(canvas);drawMoreIcon(context,canvas,iconPaint,getWidth()/2f,getHeight()/2f,Math.max(1,Math.min(getWidth(),getHeight())-10),255);
+            }
+        };
+    }
     private final Runnable startEntry=()->{
         if(!isAttachedToWindow())return;
         animator=android.animation.ValueAnimator.ofFloat(0,1);
@@ -61,14 +78,14 @@ final class FanView extends View {
     }
     @Override protected void onDraw(Canvas c) {
         super.onDraw(c);float x=ox(),y=oy(),r=drawnRadius();
-        
+
         paint.setColor(0xee20252c);paint.setAlpha((int)(235*progress));
-        
+
         for(int i=0;i<=apps.size();i++) {
             double a=Math.toRadians(Rules.angle(i,apps.size()+1));
             float cx=x+(right?-1:1)*r*(float)Math.cos(a),cy=y-r*(float)Math.sin(a);
             float size=icon*(selected==i?1.12f:1);
-            if(i==0){paint.setColor(themeColor(android.R.attr.colorAccent,0xff6750a4));paint.setAlpha((int)(255*progress));c.drawCircle(cx,cy,size/2+5,paint);}
+            if(i==0){drawMoreIcon(getContext(),c,paint,cx,cy,size,(int)(255*progress));continue;}
             if(i>0&&apps.get(i-1).icon!=null) {
                 ShortcutTarget target=apps.get(i-1);
                 android.graphics.drawable.Drawable drawable=target.icon;

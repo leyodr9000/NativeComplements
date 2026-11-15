@@ -180,6 +180,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     private View left,right;
     private FanView fan;
     private View panel;
+    private String sidebarPanelSource;
     private View openWait;
     private ImageView openWaitIcon;
     private String openWaitToken,openWaitPackage;
@@ -285,7 +286,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         cleaned=false;connected=true;live=this;
         Config.hostPreferences=getSharedPreferences("nativecomplements_corner",Context.MODE_PRIVATE);
         config=new Config(this);wm=getSystemService(WindowManager.class);
-        sidebar=new SidebarHost(this,this::launchSidebar,()->main.post(()->{if(!cleaned)publish(false);}),pkg->launchSidebar(pkg,true));
+        sidebar=new SidebarHost(this,this::launchSidebar,()->main.post(()->{if(!cleaned)publish(false);}),this::showSidebarMore);
         controls=new WindowControls(this);miniControls=new WindowControls(this);
         try{suggestions=new SuggestionHost(getApplicationContext());}catch(RuntimeException unavailable){android.util.Log.w("NativeComplements","SUGGESTIONS_HOST_UNAVAILABLE");}
         edgeTouch=new dev.local.sunwindowdemo.features.edgetouch.EdgeTouchHost(getApplicationContext());
@@ -332,12 +333,13 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         if(miniControls!=null)miniControls.systemOverlay(screenshotVisible||systemFocus);
         if(edgeTouch!=null)edgeTouch.setEnvironment(screenshotVisible||systemFocus,keyboard);
     }
-    private boolean sidebarEligible(SidebarSettings.State state){
+    private boolean sidebarEligible(SidebarSettings.State state){return sidebarEligible(state,false);}
+    private boolean sidebarEligible(SidebarSettings.State state,boolean ownPanel){
         long now=android.os.SystemClock.elapsedRealtime();
         KeyguardManager kg=getSystemService(KeyguardManager.class);
         return SidebarPolicy.visible(state.enabled(),config.enabled(),ready()&&backendReady&&!"recovery".equals(backendState),
             getSystemService(android.os.PowerManager.class).isInteractive(),kg==null||kg.isKeyguardLocked(),
-            screenshotVisible||systemFocus||panel!=null||openWait!=null||fan!=null,keyboard,
+            screenshotVisible||systemFocus||(panel!=null&&!ownPanel)||openWait!=null||fan!=null,keyboard,
             getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE,state.landscapeOnly(),
             sidebarForeground,state.hosts(),now-foregroundSeen);
     }
@@ -380,6 +382,14 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     }
     private void refresh() {
         updateSidebar();
+        if(panel!=null&&sidebarPanelSource!=null){
+            // The shared menu must not inherit corner-only landscape disabling.
+            if(screenshotVisible||systemFocus){removeHot();return;}
+            if(java.util.Objects.equals(sidebarPanelSource,sidebarForeground)&&sidebarEligible(SidebarSettings.read(config.prefs),true)){
+                removeHot();return;
+            }
+            hidePanel();
+        }
         if(!allowed()){hideFan();if(panel!=null&&!(screenshotVisible||systemFocus))hidePanel();removeHot();return;}
         if(BackBridge.cornerReady){if(left==null)addHot(false);if(right==null)addHot(true);}
         else removeHot();
@@ -474,14 +484,27 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             }catch(Exception e){main.post(()->{if(!cleaned&&panel==savingPanel){done.accept(false);}});}
         });
     }
-    private void showPanel() {
+    private void showSidebarMore(){
+        if(!sidebarEligible(SidebarSettings.read(config.prefs)))return;
+        String source=sidebarForeground;
+        if(sidebar!=null)sidebar.hide();
+        showPanel(source);
+    }
+    private void showPanel(){showPanel(null);}
+    private void showPanel(String sidebarSource) {
         if(panel!=null)return;
         if(all.isEmpty()){Toast.makeText(this,"应用列表正在加载，请稍后重试",Toast.LENGTH_SHORT).show();return;}
+        sidebarPanelSource=sidebarSource;
         FrameLayout outside=new FrameLayout(this){
             @Override public boolean dispatchKeyEvent(KeyEvent e){if(e.getKeyCode()==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)backPanel();return true;}return super.dispatchKeyEvent(e);}
         };
         outside.setBackgroundColor(Color.TRANSPARENT);outside.setOnClickListener(v->hidePanel());
-        View content=AppList.create(this,all,selectedTargets(),target->{hidePanel();launch(target.key(),false);},this::saveTargets,
+        View content=AppList.create(this,all,selectedTargets(),target->{
+            String source=sidebarPanelSource;
+            if(source!=null&&(!java.util.Objects.equals(source,sidebarForeground)||!sidebarEligible(SidebarSettings.read(config.prefs),true))){hidePanel();return;}
+            hidePanel();
+            if(source!=null&&!target.quick)launchSidebar(target.pkg,true);else launch(target.key(),false);
+        },this::saveTargets,
             quick==null?List.of():quick.entries(),this::quickAction);menuContent=content;
         AppList.blur(content,config.menuBlur());
         content.setOnClickListener(v->{});
@@ -501,10 +524,10 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         });
         outside.setAlpha(0);
         try{wm.addView(outside,p);outside.animate().alpha(1).setDuration(150).start();updateOverlayPriority();publish(false);}
-        catch(RuntimeException failure){panel=null;menuContent=null;Toast.makeText(this,"应用面板打开失败",Toast.LENGTH_SHORT).show();}
+        catch(RuntimeException failure){panel=null;menuContent=null;sidebarPanelSource=null;Toast.makeText(this,"应用面板打开失败",Toast.LENGTH_SHORT).show();}
     }
     private void backPanel(){if(menuContent==null||!AppList.back(menuContent))hidePanel();}
-    private void hidePanel(){if(panel!=null){InputMethodManager imm=getSystemService(InputMethodManager.class);if(imm!=null)imm.hideSoftInputFromWindow(panel.getWindowToken(),0);remove(panel);panel=null;menuContent=null;updateOverlayPriority();publish(false);}}
+    private void hidePanel(){if(panel!=null){InputMethodManager imm=getSystemService(InputMethodManager.class);if(imm!=null)imm.hideSoftInputFromWindow(panel.getWindowToken(),0);remove(panel);panel=null;menuContent=null;sidebarPanelSource=null;updateOverlayPriority();publish(false);}}
     private void quickAction(String id){if(quick!=null)quick.action(id);}
     private IntentFilter settingsFilter(){IntentFilter filter=new IntentFilter(ConfigProvider.CHANGED);filter.addAction(WindowShortcutActivity.ACTION);return filter;}
     private void updateOpenWait(Intent frame){
