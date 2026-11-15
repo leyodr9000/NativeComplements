@@ -35,6 +35,11 @@ public class SidebarPolicyTest {
         assertThrows(IllegalArgumentException.class,()->SidebarPolicy.packages(List.of("com.test.app","com.test.app"),12));
         assertThrows(IllegalArgumentException.class,()->SidebarPolicy.packages(Collections.nCopies(13,"com.test.app"),12));
     }
+    @Test public void nativeBackExclusionMatchesOnlyActualSidebarRectangle(){
+        int[] rect={2,400,12,472};assertTrue(SidebarPolicy.contains(rect,5,430));
+        assertFalse(SidebarPolicy.contains(rect,12,430));assertFalse(SidebarPolicy.contains(rect,5,472));
+        assertFalse(SidebarPolicy.contains(new int[0],5,430));assertFalse(SidebarPolicy.contains(rect,Float.NaN,430));
+    }
     @Test public void safeAreaPositionClampsAndFitsBothLandscapeRotations(){
         assertEquals(40,SidebarPolicy.top(40,1080,100,0));
         assertEquals(980,SidebarPolicy.top(40,1080,100,100));

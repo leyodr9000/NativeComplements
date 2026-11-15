@@ -22,6 +22,10 @@ public final class SidebarPolicy {
         }
         return List.copyOf(unique);
     }
+    public static boolean contains(int[] rect,float x,float y){
+        return rect!=null&&rect.length==4&&Float.isFinite(x)&&Float.isFinite(y)
+            &&x>=rect[0]&&x<rect[2]&&y>=rect[1]&&y<rect[3];
+    }
     public static int top(int availableTop,int availableBottom,int height,int percent){
         if(availableBottom<=availableTop||height<=0)throw new IllegalArgumentException("bounds");
         int free=Math.max(0,availableBottom-availableTop-height);

@@ -98,7 +98,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         if(event.getActionMasked()==MotionEvent.ACTION_DOWN){
             sidebarTouchDown=-1;
             int[] r=sidebarInput;
-            if(r.length==4&&event.getX()>=r[0]&&event.getX()<r[2]&&event.getY()>=r[1]&&event.getY()<r[3]){
+            if(SidebarPolicy.contains(r,event.getX(),event.getY())){
                 sidebarTouchDown=event.getDownTime();cornerGesture.abandon();
             }
         }
@@ -232,7 +232,9 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     }
     void publishRotationSettings(){if(suggestions!=null)suggestions.publishRotationSettings();}
     private volatile dev.local.sunwindowdemo.features.edgetouch.EdgeTouchHost edgeTouch;
-    boolean blocksEdgeTouch(float x,float y){return edgeTouch!=null&&edgeTouch.blocks(x,y);}
+    // This predicate only gates native Back admission, not the actual View/input-filter stream.
+    // Keep sidebar touches deliverable while preventing an inward handle swipe from becoming Back.
+    boolean blocksEdgeTouch(float x,float y){return SidebarPolicy.contains(sidebarInput,x,y)||edgeTouch!=null&&edgeTouch.blocks(x,y);}
     private volatile boolean backendReady;
     private volatile String backendState="";
     private final BroadcastReceiver backendReceiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){
