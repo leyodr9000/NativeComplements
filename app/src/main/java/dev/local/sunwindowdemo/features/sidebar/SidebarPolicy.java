@@ -26,6 +26,14 @@ public final class SidebarPolicy {
         return rect!=null&&rect.length==4&&Float.isFinite(x)&&Float.isFinite(y)
             &&x>=rect[0]&&x<rect[2]&&y>=rect[1]&&y<rect[3];
     }
+    /** Only the collapsed handle ignores horizontal cutout insets; the expanded panel retains its safe-area anchor. */
+    public static int horizontal(int displayWidth,int width,int insetLeft,int insetRight,boolean right,boolean collapsed){
+        if(displayWidth<=0||width<=0||width>displayWidth||insetLeft<0||insetRight<0)
+            throw new IllegalArgumentException("bounds");
+        int left=collapsed?0:Math.min(insetLeft,displayWidth-width);
+        int edge=collapsed?displayWidth:Math.max(left+width,displayWidth-insetRight);
+        return right?Math.max(left,edge-width):left;
+    }
     public static int top(int availableTop,int availableBottom,int height,int percent){
         if(availableBottom<=availableTop||height<=0)throw new IllegalArgumentException("bounds");
         int free=Math.max(0,availableBottom-availableTop-height);

@@ -48,12 +48,14 @@ final class SidebarHost implements AutoCloseable {
         p.gravity=Gravity.TOP|Gravity.LEFT;p.setTitle(title);p.windowAnimations=0;p.setFitInsetsTypes(0);
         SystemUiHost.trust(p);return p;
     }
-    private void place(WindowManager.LayoutParams p,int width,int height){
+    private void place(WindowManager.LayoutParams p,int width,int height,boolean collapsed){
         WindowMetrics metrics=wm.getCurrentWindowMetrics();Rect b=metrics.getBounds();
         android.graphics.Insets in=metrics.getWindowInsets().getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
-        int left=in.left+dp(2),right=b.width()-in.right-dp(2),top=in.top+dp(8),bottom=b.height()-in.bottom-dp(8);
+        // Preserve the existing panel/vertical safe area. Only the small resting handle reaches the physical edge.
+        int left=collapsed?0:in.left+dp(2),right=collapsed?b.width():b.width()-in.right-dp(2);
+        int top=in.top+dp(8),bottom=b.height()-in.bottom-dp(8);
         p.width=Math.min(width,Math.max(1,right-left));p.height=Math.min(height,Math.max(1,bottom-top));
-        p.x=settings.right()?Math.max(left,right-p.width):left;
+        p.x=SidebarPolicy.horizontal(b.width(),p.width,in.left+dp(2),in.right+dp(2),settings.right(),collapsed);
         p.y=SidebarPolicy.top(top,Math.max(top+1,bottom),p.height,settings.position());
         p.layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
     }
@@ -81,7 +83,7 @@ final class SidebarHost implements AutoCloseable {
             }
         });
         WindowManager.LayoutParams p=params(dp(10),dp(settings.handleHeight()),"NativeComplements-sidebar-handle");
-        place(p,dp(10),dp(settings.handleHeight()));
+        place(p,dp(10),dp(settings.handleHeight()),true);
         view.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->changed.run());
         try{wm.addView(view,p);handle=view;changed.run();}catch(RuntimeException failure){android.util.Log.w("NcSidebar","handle unavailable",failure);}
     }
@@ -119,7 +121,7 @@ final class SidebarHost implements AutoCloseable {
             column.addView(empty,new LinearLayout.LayoutParams(-1,dp(80)));
         }
         int wanted=dp(50+Math.max(1,selected.size())*(settings.iconSize()+33));
-        WindowManager.LayoutParams p=params(dp(settings.iconSize()+40),wanted,"NativeComplements-sidebar-panel");place(p,p.width,wanted);
+        WindowManager.LayoutParams p=params(dp(settings.iconSize()+40),wanted,"NativeComplements-sidebar-panel");place(p,p.width,wanted,false);
         scroller.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->changed.run());
         try{wm.addView(scroller,p);panel=scroller;changed.run();}catch(RuntimeException failure){showHandle();}
     }

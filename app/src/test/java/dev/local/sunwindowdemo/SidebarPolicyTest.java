@@ -40,6 +40,15 @@ public class SidebarPolicyTest {
         assertFalse(SidebarPolicy.contains(rect,12,430));assertFalse(SidebarPolicy.contains(rect,5,472));
         assertFalse(SidebarPolicy.contains(new int[0],5,430));assertFalse(SidebarPolicy.contains(rect,Float.NaN,430));
     }
+    @Test public void restingHandleUsesPhysicalEdgeButExpandedPanelRetainsCutoutInsets(){
+        // Insets swap when landscape rotates. Neither rotation may pull the collapsed handle inward.
+        for(int[] insets:List.of(new int[]{140,2},new int[]{2,140})){
+            assertEquals(0,SidebarPolicy.horizontal(2560,28,insets[0],insets[1],false,true));
+            assertEquals(2532,SidebarPolicy.horizontal(2560,28,insets[0],insets[1],true,true));
+            assertEquals(insets[0],SidebarPolicy.horizontal(2560,230,insets[0],insets[1],false,false));
+            assertEquals(2560-insets[1]-230,SidebarPolicy.horizontal(2560,230,insets[0],insets[1],true,false));
+        }
+    }
     @Test public void safeAreaPositionClampsAndFitsBothLandscapeRotations(){
         assertEquals(40,SidebarPolicy.top(40,1080,100,0));
         assertEquals(980,SidebarPolicy.top(40,1080,100,100));

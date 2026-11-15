@@ -35,7 +35,7 @@ fun SidebarScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp) {
             }
             GroupTitle("侧边栏外观")
             SettingsGroup {
-                ToggleRow("把手显示在右侧", "关闭则显示在左侧；不改变横屏小窗默认左侧布局", state.right()) {
+                ToggleRow("把手显示在右侧", "关闭则显示在左侧；收起把手贴物理屏幕边缘，展开列表与小窗仍避让挖孔", state.right()) {
                     save { SidebarSettings.flag(context, "sidebarRight", it) }
                 }
                 SliderRow("侧边栏不透明度", "只调整把手和面板背景，不改变小窗内容透明度", state.opacity(), 10..100, "%") {

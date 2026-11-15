@@ -53,6 +53,30 @@ public class SidebarHostTest {
         host.update(s,List.of(app),true,"com.tencent.tmgp.sgame",SystemClock.elapsedRealtime()-1);host.expand();
         assertFalse(host.expanded());assertTrue(calls.isEmpty());
     }
+    @Test public void onlyCollapsedHandleMovesToPhysicalEdgeAndPanelKeepsOriginalSafeAnchor()throws Exception{
+        WindowManager real=c.getSystemService(WindowManager.class);
+        var insets=new WindowInsets.Builder().setInsets(WindowInsets.Type.displayCutout(),android.graphics.Insets.of(140,0,0,0))
+            .setVisible(WindowInsets.Type.displayCutout(),true).build();
+        var metrics=new WindowMetrics(new android.graphics.Rect(0,0,2560,1151),insets);
+        WindowManager simulated=(WindowManager)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+            new Class[]{WindowManager.class},(proxy,method,args)->method.getName().equals("getCurrentWindowMetrics")?metrics:method.invoke(real,args));
+        Context wrapper=new android.content.ContextWrapper(c){@Override public Object getSystemService(String name){return Context.WINDOW_SERVICE.equals(name)?simulated:super.getSystemService(name);}};
+        host=new SidebarHost(wrapper,pkg->{},()->{});
+        var app=new AppCatalog.App("com.tencent.mobileqq","QQ",null);
+        host.update(state(false,List.of(app.pkg)),List.of(app),true,"com.tencent.tmgp.sgame",SystemClock.elapsedRealtime()+2500);
+        View resting=views().stream().filter(v->"展开小窗侧边栏".contentEquals(v.getContentDescription()==null?"":v.getContentDescription())).findFirst().orElseThrow();
+        assertEquals(0,((WindowManager.LayoutParams)resting.getLayoutParams()).x);
+        int restingY=((WindowManager.LayoutParams)resting.getLayoutParams()).y;
+        host.expand();
+        View panel=views().stream().filter(v->v.getLayoutParams() instanceof WindowManager.LayoutParams p&&"NativeComplements-sidebar-panel".contentEquals(p.getTitle())).findFirst().orElseThrow();
+        WindowManager.LayoutParams p=(WindowManager.LayoutParams)panel.getLayoutParams();
+        int gap=Math.round(2*c.getResources().getDisplayMetrics().density);
+        assertEquals(140+gap,p.x);
+        host.collapse();
+        View returned=views().stream().filter(v->"展开小窗侧边栏".contentEquals(v.getContentDescription()==null?"":v.getContentDescription())).findFirst().orElseThrow();
+        WindowManager.LayoutParams after=(WindowManager.LayoutParams)returned.getLayoutParams();
+        assertEquals(0,after.x);assertEquals(restingY,after.y);
+    }
     @Test public void changingForegroundClosesExpandedStripAndOnlyInstalledChosenAppsAreRendered()throws Exception{
         host=new SidebarHost(c,pkg->{},()->{});
         var app=new AppCatalog.App("com.tencent.mobileqq","QQ",null);var s=state(true,List.of("com.missing.app",app.pkg));
