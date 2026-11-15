@@ -18,6 +18,7 @@ fun WindowScreen(p: WindowPreferences, navigate: (Page) -> Unit, toggleControl: 
     }
     GroupTitle("小窗设置")
     SettingsGroup {
+        SettingRow("小窗侧边栏", "仅在指定应用显示的小窗启动入口", onClick = { navigate(Page.Sidebar) }, leading = { Glyph("apps") })
         SettingRow("手势与菜单", onClick = { navigate(Page.Gestures) }, leading = { Glyph("gesture") })
         SettingRow("窗口与多任务", onClick = { navigate(Page.Behavior) }, leading = { Glyph("window") })
         SettingRow("小窗触发限制", onClick = { navigate(Page.Prevention) }, leading = { Glyph("check") })

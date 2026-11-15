@@ -92,7 +92,17 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     private final CornerGesture cornerGesture=new CornerGesture();
     private volatile CornerGesture.Area cornerArea;
     private long cornerUiDown;
+    private volatile int[] sidebarInput=new int[0];
+    private long sidebarTouchDown=-1;
     boolean cornerInput(MotionEvent event,Runnable pilfer){
+        if(event.getActionMasked()==MotionEvent.ACTION_DOWN){
+            sidebarTouchDown=-1;
+            int[] r=sidebarInput;
+            if(r.length==4&&event.getX()>=r[0]&&event.getX()<r[2]&&event.getY()>=r[1]&&event.getY()<r[3]){
+                sidebarTouchDown=event.getDownTime();cornerGesture.abandon();
+            }
+        }
+        if(sidebarTouchDown==event.getDownTime())return false;
         CornerGesture.Area area=cornerArea;
         int stage=cornerGesture.event(event.getActionMasked(),event.getX(),event.getY(),
             event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)&&event.getToolType(0)==MotionEvent.TOOL_TYPE_FINGER,
@@ -206,6 +216,9 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     private boolean dropAvailable(){return "idle".equals(backendState)||"recovery".equals(backendState)||"active".equals(backendState)&&!normalOccupied;}
     private SuggestionHost suggestions;
     private WindowQuickHost quick;
+    private SidebarHost sidebar;
+    private long foregroundSeen;
+    private String sidebarForeground="";
     private BarrageHost barrage;
     private View menuContent;
     private int suggestionImeTop=Integer.MAX_VALUE;
@@ -230,7 +243,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         if(cleaned||controls==null)return;
         backendReady=true;backendState=i.getStringExtra("state");normalOccupied=i.getBooleanExtra("normalOccupied",true);
         updateOpenWait(i);
-        if(i.hasExtra("foreground")){foreground=i.getStringExtra("foreground");keyboard=i.getBooleanExtra("imeVisible",false);systemFocus=i.getBooleanExtra("systemOverlay",false);
+        if(i.hasExtra("foreground")){foregroundSeen=android.os.SystemClock.elapsedRealtime();sidebarForeground=i.getStringExtra("sidebarForeground");foreground=i.getStringExtra("foreground");keyboard=i.getBooleanExtra("imeVisible",false);systemFocus=i.getBooleanExtra("systemOverlay",false);
             systemOverlayTitle=i.getStringExtra("systemOverlayTitle");
             suggestionImeTop=i.getIntExtra("imeTop",Integer.MAX_VALUE);
             updateOverlayPriority();controls.imeTop(suggestionImeTop);miniControls.imeTop(suggestionImeTop);refresh();}
@@ -243,6 +256,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             Intent mini=i.getParcelableExtra("pinnedFrame",Intent.class);
             if(mini==null)miniControls.hide();else miniControls.update(mini);
         }}catch(RuntimeException e){hideControls();android.util.Log.e("NativeComplements","overlay controls failed",e);}
+        updateSidebar();
         if(i.getStringExtra("event")!=null&&(i.getStringExtra("event").endsWith("FAILED")||"BLOCKED".equals(i.getStringExtra("event"))))Toast.makeText(this,WindowPolicy.failureMessage(i.getStringExtra("report")),Toast.LENGTH_SHORT).show();
     }
     private List<AppCatalog.App> all=List.of();
@@ -257,6 +271,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     private final BroadcastReceiver screenReceiver=new BroadcastReceiver(){
         public void onReceive(Context c,Intent i){
             if(Intent.ACTION_SCREEN_ON.equals(i.getAction())){resumePoll();return;}
+            foregroundSeen=0;if(sidebar!=null)sidebar.hide();
             cancelOpenWait();hideFan();hidePanel();removeHot();if(controls!=null)hideControls();refresh();Wire.send(SystemUiHost.this,"STATUS");
             if(Intent.ACTION_SCREEN_OFF.equals(i.getAction())){main.removeCallbacks(poll);polling=false;}else resumePoll();
         }
@@ -268,6 +283,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         cleaned=false;connected=true;live=this;
         Config.hostPreferences=getSharedPreferences("nativecomplements_corner",Context.MODE_PRIVATE);
         config=new Config(this);wm=getSystemService(WindowManager.class);
+        sidebar=new SidebarHost(this,this::launchSidebar,()->main.post(()->{if(!cleaned)publish(false);}));
         controls=new WindowControls(this);miniControls=new WindowControls(this);
         try{suggestions=new SuggestionHost(getApplicationContext());}catch(RuntimeException unavailable){android.util.Log.w("NativeComplements","SUGGESTIONS_HOST_UNAVAILABLE");}
         edgeTouch=new dev.local.sunwindowdemo.features.edgetouch.EdgeTouchHost(getApplicationContext());
@@ -302,6 +318,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         },"corner-app-catalog").start();
     }
     private void updateOverlayPriority(){
+        updateSidebar();
         for(View overlay:new View[]{panel,openWait})if(overlay!=null&&overlay.getLayoutParams() instanceof WindowManager.LayoutParams p){
             int mask=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
             int next=screenshotVisible||systemFocus?p.flags|mask:p.flags&~mask;
@@ -312,6 +329,31 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         if(controls!=null)controls.systemOverlay(screenshotVisible||systemFocus);
         if(miniControls!=null)miniControls.systemOverlay(screenshotVisible||systemFocus);
         if(edgeTouch!=null)edgeTouch.setEnvironment(screenshotVisible||systemFocus,keyboard);
+    }
+    private boolean sidebarEligible(SidebarSettings.State state){
+        long now=android.os.SystemClock.elapsedRealtime();
+        KeyguardManager kg=getSystemService(KeyguardManager.class);
+        return SidebarPolicy.visible(state.enabled(),config.enabled(),ready()&&backendReady&&!"recovery".equals(backendState),
+            getSystemService(android.os.PowerManager.class).isInteractive(),kg==null||kg.isKeyguardLocked(),
+            screenshotVisible||systemFocus||panel!=null||openWait!=null||fan!=null,keyboard,
+            getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE,state.landscapeOnly(),
+            sidebarForeground,state.hosts(),now-foregroundSeen);
+    }
+    private void updateSidebar(){
+        if(sidebar==null||config==null)return;
+        SidebarSettings.State state=SidebarSettings.read(config.prefs);
+        sidebar.update(state,all,sidebarEligible(state),sidebarForeground,foregroundSeen+2500);
+    }
+    private void launchSidebar(String pkg){
+        // Explicit non-focusable sidebar click; never reuse corner landscape-disable rules.
+        SidebarSettings.State state=SidebarSettings.read(config.prefs);
+        if(!state.apps().contains(pkg)||!sidebarEligible(state)||pkg.equals(sidebarForeground)
+            ||Wire.PKG.equals(pkg)||BackBridge.PACKAGE.equals(pkg)||LauncherGuard.PACKAGE.equals(pkg)
+            ||all.stream().noneMatch(app->app.pkg.equals(pkg)))return;
+        if(config.blocked().contains(pkg)){Toast.makeText(this,"该应用已在小窗禁用列表中",Toast.LENGTH_SHORT).show();return;}
+        long now=android.os.SystemClock.elapsedRealtime();if(now-lastOpen<500)return;lastOpen=now;
+        hideFan();hidePanel();cancelOpenWait();
+        Wire.openSidebar(this,pkg,sidebarForeground);
     }
     private boolean allowed() {
         if(config==null||!settingsReady||!config.enabled()||!backendReady||cleaned||screenshotVisible||systemFocus||!getSystemService(android.os.PowerManager.class).isInteractive())return false;
@@ -334,6 +376,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         p.setFitInsetsTypes(0);p.setTitle("NativeComplements-corner");trust(p);return p;
     }
     private void refresh() {
+        updateSidebar();
         if(!allowed()){hideFan();if(panel!=null&&!(screenshotVisible||systemFocus))hidePanel();removeHot();return;}
         if(BackBridge.cornerReady){if(left==null)addHot(false);if(right==null)addHot(true);}
         else removeHot();
@@ -382,8 +425,10 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             ?new CornerGesture.Area(cornerBounds.width(),cornerBounds.height(),dp(config.heat()),dp(config.distance()),ViewConfiguration.getLongPressTimeout()):null;
         int[] handles=controls==null?new int[0]:controls.protectedRects();
         int[] miniHandles=miniControls==null?new int[0]:miniControls.protectedRects();
-        int primaryLength=handles.length;handles=java.util.Arrays.copyOf(handles,primaryLength+miniHandles.length);
+        int[] sidebarHandles=sidebar==null?new int[0]:sidebar.protectedRects();sidebarInput=sidebarHandles.clone();
+        int primaryLength=handles.length;handles=java.util.Arrays.copyOf(handles,primaryLength+miniHandles.length+sidebarHandles.length);
         System.arraycopy(miniHandles,0,handles,primaryLength,miniHandles.length);
+        System.arraycopy(sidebarHandles,0,handles,primaryLength+miniHandles.length,sidebarHandles.length);
         rects=java.util.Arrays.copyOf(rects,count);
         if(edgeTouch!=null){
             int[] protectedAreas=java.util.Arrays.copyOf(rects,count+handles.length);
@@ -578,7 +623,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             Wire.openApp(this,target.pkg,wakeStep);
         },180);
     }
-    @Override public void onConfigurationChanged(Configuration c){cancelOpenWait();hideFan();hidePanel();removeHot();refresh();Wire.send(this,"STATUS");}
+    @Override public void onConfigurationChanged(Configuration c){if(sidebar!=null)sidebar.hide();foregroundSeen=0;cancelOpenWait();hideFan();hidePanel();removeHot();refresh();Wire.send(this,"STATUS");}
     @Override public void onLowMemory(){}
-    private void cleanup(){if(cleaned)return;dev.local.sunwindowdemo.features.iconlayers.IconAssets.removeOnReload(iconsReloaded);cancelOpenWait();if(barrage!=null){barrage.close();barrage=null;}if(quick!=null){quick.close();quick=null;}if(suggestions!=null){suggestions.close();suggestions=null;}if(edgeTouch!=null){edgeTouch.close();edgeTouch=null;}settingsWorker.shutdownNow();try{getApplicationContext().unregisterComponentCallbacks(this);}catch(RuntimeException ignored){}for(BroadcastReceiver receiver:new BroadcastReceiver[]{settingsReceiver,queryReceiver,backendReceiver,screenReceiver,packageReceiver})try{unregisterReceiver(receiver);}catch(RuntimeException ignored){}if(controls!=null){controls.close();}if(miniControls!=null)miniControls.close();Wire.listen(null);cleaned=true;connected=false;if(live==this)live=null;main.removeCallbacksAndMessages(null);hideFan();hidePanel();removeHot();publish(true);if(config!=null)config.prefs.unregisterOnSharedPreferenceChangeListener(prefListener);}
+    private void cleanup(){if(cleaned)return;if(sidebar!=null){sidebar.close();sidebar=null;}dev.local.sunwindowdemo.features.iconlayers.IconAssets.removeOnReload(iconsReloaded);cancelOpenWait();if(barrage!=null){barrage.close();barrage=null;}if(quick!=null){quick.close();quick=null;}if(suggestions!=null){suggestions.close();suggestions=null;}if(edgeTouch!=null){edgeTouch.close();edgeTouch=null;}settingsWorker.shutdownNow();try{getApplicationContext().unregisterComponentCallbacks(this);}catch(RuntimeException ignored){}for(BroadcastReceiver receiver:new BroadcastReceiver[]{settingsReceiver,queryReceiver,backendReceiver,screenReceiver,packageReceiver})try{unregisterReceiver(receiver);}catch(RuntimeException ignored){}if(controls!=null){controls.close();}if(miniControls!=null)miniControls.close();Wire.listen(null);cleaned=true;connected=false;if(live==this)live=null;main.removeCallbacksAndMessages(null);hideFan();hidePanel();removeHot();publish(true);if(config!=null)config.prefs.unregisterOnSharedPreferenceChangeListener(prefListener);}
 }

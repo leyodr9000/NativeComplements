@@ -174,16 +174,8 @@ fun IconAppScreen(app: LaunchableApp?, bottomInset: Dp = 0.dp) {
         if (policy.notification == IconPolicy.NOTIFICATION_LIBRARY) item {
             Hint("使用首页单独导入的通知图标库前景；未匹配或无法提取时保留应用原生通知图标。")
         }
-        if (policy.notification != IconPolicy.UNCHANGED && !loading) item {
-            SettingsGroup {
-                SliderRow("通知图标大小", "100% 为当前默认大小；仅调整替换的通知图标，过大可能受状态栏边界裁切。",
-                    value = policy.notificationScale,
-                    range = IconPolicy.NOTIFICATION_SCALE_MIN..IconPolicy.NOTIFICATION_SCALE_MAX, unit = "%",
-                    onCommit = { policy.notificationScale = it; save() })
-                SettingRow("恢复默认大小", onClick = {
-                    policy.notificationScale = IconPolicy.NOTIFICATION_SCALE_DEFAULT; save()
-                })
-            }
+        if (policy.notification != IconPolicy.UNCHANGED) item {
+            Hint("通知大小统一使用图标适配首页的全局设置；100% 保持当前默认效果。")
         }
         if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 12.dp)) }
         if (error.isNotBlank()) item { Hint(error) }

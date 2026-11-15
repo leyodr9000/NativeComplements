@@ -10,6 +10,7 @@ import dev.local.sunwindowdemo.core.ui.ComplementsTheme
 import dev.local.sunwindowdemo.features.iconlayers.IconLayerStore
 import dev.local.sunwindowdemo.features.iconlayers.IconPolicy
 import dev.local.sunwindowdemo.features.iconlayers.IconBatchDialog
+import dev.local.sunwindowdemo.features.iconlayers.IconAppScreen
 import dev.local.sunwindowdemo.features.iconlayers.IconLayerScreen
 import dev.local.sunwindowdemo.navigation.ModuleApp
 import dev.local.sunwindowdemo.navigation.Page
@@ -65,7 +66,7 @@ class IconBatchUiTest {
         compose.runOnIdle { assertEquals(setOf("test.icons.two"), selected) }
     }
 
-    @Test fun batchCanChangeOnlyNotificationSizeAndPreserveModes() {
+    @Test fun homepageHasOneGlobalSliderAndResetPreservesAppModesAndLegacyData() {
         val context = compose.activity
         IconLayerStore.prefs(context).edit().clear().commit()
         val original = IconPolicy().apply {
@@ -75,22 +76,59 @@ class IconBatchUiTest {
             notificationScale = 135
         }
         IconPolicy.save(context, "test.icons.one", original)
+        compose.setContent {
+            ComplementsTheme(dynamic = false) {
+                IconLayerScreen(listOf(LaunchableApp("test.icons.one", "示例一")))
+            }
+        }
+        compose.onAllNodesWithContentDescription("通知图标大小").assertCountEquals(1)
+        compose.onNodeWithContentDescription("通知图标大小").performScrollTo()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(145f) }
+        compose.waitUntil(10_000) { IconLayerStore.notificationScale(context) == 145 }
+        compose.onNodeWithText("恢复默认通知大小").performScrollTo().performClick()
+        compose.waitUntil(10_000) { IconLayerStore.notificationScale(context) == 100 }
+        val saved = IconPolicy.read(context, "test.icons.one")
+        assertEquals("Retained only for old-config compatibility", 135, saved.notificationScale)
+        assertEquals(IconPolicy.MANUAL, saved.color)
+        assertEquals(IconPolicy.UNCHANGED, saved.monochrome)
+        assertEquals(IconPolicy.FOLLOW, saved.notification)
+        compose.onNodeWithText("手动前后景 · 通知：跟随前景").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun perAppScreenExplainsGlobalSizeButHasNoIndependentSlider() {
+        val context = compose.activity
+        IconLayerStore.prefs(context).edit().clear().commit()
+        IconPolicy.save(context, context.packageName, IconPolicy().apply { notification = IconPolicy.FOLLOW })
+        compose.setContent {
+            ComplementsTheme(dynamic = false) {
+                IconAppScreen(LaunchableApp(context.packageName, "本模块"))
+            }
+        }
+        compose.onNodeWithContentDescription("通知图标大小").assertDoesNotExist()
+        compose.onNodeWithText("恢复默认大小").assertDoesNotExist()
+        compose.onNodeWithText("通知大小统一使用图标适配首页的全局设置；100% 保持当前默认效果。")
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun batchDialogOnlyChangesModesAndHasNoSizeControl() {
+        val context = compose.activity
+        IconLayerStore.prefs(context).edit().clear().commit()
+        IconLayerStore.notificationScale(context, 145)
         var applied = false
         compose.setContent {
             ComplementsTheme(dynamic = false) {
                 IconBatchDialog(setOf("test.icons.one"), {}, { applied = true })
             }
         }
+        compose.onNodeWithContentDescription("通知图标大小").assertDoesNotExist()
+        compose.onNodeWithText("保持各应用现有大小").assertDoesNotExist()
+        compose.onNodeWithText("恢复默认大小").assertDoesNotExist()
         compose.onNodeWithText("应用").assertIsNotEnabled()
-        compose.onNodeWithText("保持各应用现有大小").performScrollTo().performClick()
-        compose.onNodeWithText("恢复默认大小").performScrollTo().performClick()
-        compose.onNodeWithText("应用").assertIsEnabled().performClick()
+        compose.onNodeWithText("通知图标库").performScrollTo().performClick()
+        compose.onNodeWithText("应用").performClick()
         compose.waitUntil(10_000) { applied }
-        val saved = IconPolicy.read(context, "test.icons.one")
-        assertEquals(100, saved.notificationScale)
-        assertEquals(IconPolicy.MANUAL, saved.color)
-        assertEquals(IconPolicy.UNCHANGED, saved.monochrome)
-        assertEquals(IconPolicy.FOLLOW, saved.notification)
+        assertEquals(IconPolicy.NOTIFICATION_LIBRARY, IconPolicy.read(context, "test.icons.one").notification)
+        assertEquals(145, IconLayerStore.notificationScale(context))
     }
 
     private fun batchFlow() {

@@ -26,6 +26,7 @@ public final class IconLayerStore {
         b.putInt("mode", p.getInt("mode", 0));
         b.putBoolean("enabled", p.getBoolean("enabled", false));
         b.putBoolean("notifications",p.getBoolean("notifications",false));
+        b.putInt("notificationScale", notificationScale(c));
         b.putString("policies", p.getString("policies", "{}"));
         b.putString("generation", p.getString("generation", ""));
         b.putString("title", p.getString("title", ""));
@@ -66,6 +67,28 @@ public final class IconLayerStore {
     public static void enabled(Context c, boolean enabled) {
         prefs(c).edit().putBoolean("enabled", enabled).apply(); refresh(c);
     }
+    /** The top-level scale is the only runtime multiplier. Legacy per-app JSON values stay inert for compatibility. */
+    public static int notificationScale(Context c) {
+        return IconPolicy.notificationScale(prefs(c).getInt("notificationScale", IconPolicy.NOTIFICATION_SCALE_DEFAULT));
+    }
+    /** Publish one global value, then send one refresh to each existing host, never one refresh per app. */
+    public static synchronized void notificationScale(Context c, int percent) {
+        if (percent < IconPolicy.NOTIFICATION_SCALE_MIN || percent > IconPolicy.NOTIFICATION_SCALE_MAX)
+            throw new IllegalArgumentException("notification scale");
+        SharedPreferences p = prefs(c);
+        boolean existed = p.contains("notificationScale");
+        int previous = p.getInt("notificationScale", IconPolicy.NOTIFICATION_SCALE_DEFAULT);
+        if (existed && previous == percent) return;
+        if (!p.edit().putInt("notificationScale", percent).commit()) {
+            // Android commit() may return false after its in-memory map has already changed.
+            SharedPreferences.Editor rollback = p.edit();
+            if (existed) rollback.putInt("notificationScale", previous); else rollback.remove("notificationScale");
+            rollback.apply();
+            throw new IllegalStateException("保存通知图标大小失败");
+        }
+        refresh(c);
+    }
+
     public static void notifications(Context c,boolean enabled){
         prefs(c).edit().putBoolean("notifications",enabled).apply();refresh(c);
     }

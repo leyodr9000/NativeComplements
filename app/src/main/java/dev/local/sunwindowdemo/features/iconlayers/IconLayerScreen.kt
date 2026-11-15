@@ -61,6 +61,13 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
         scope.launch { progress = text; fraction = if (total > 0) done.toFloat() / total else -1f }
     } }
     fun refreshState() { state = IconLayerStore.read(context) }
+    fun saveNotificationScale(percent: Int) {
+        try {
+            IconLayerStore.notificationScale(context, percent)
+            message = ""
+        } catch (e: Exception) { message = e.message ?: "保存失败" }
+        finally { refreshState() }
+    }
     fun install(archive: IconArchive, source: IconArchive.Source) {
         pending = null; busy = true; cancel.set(false)
         scope.launch {
@@ -98,6 +105,11 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
                     ToggleRow("通知图标替换", value = state.getBoolean("notifications")) {
                         IconLayerStore.notifications(context, it); refreshState()
                     }
+                    SliderRow("通知图标大小", "全局统一：所有被替换的通知图标共用此大小；100% 保持当前默认效果。",
+                        value = state.getInt("notificationScale", IconPolicy.NOTIFICATION_SCALE_DEFAULT),
+                        range = IconPolicy.NOTIFICATION_SCALE_MIN..IconPolicy.NOTIFICATION_SCALE_MAX, unit = "%",
+                        onCommit = ::saveNotificationScale)
+                    SettingRow("恢复默认通知大小", onClick = { saveNotificationScale(IconPolicy.NOTIFICATION_SCALE_DEFAULT) })
                     SettingRow("导入图标库",
                         if (state.getInt("count") > 0) "${state.getInt("count")} 个图标 · 已安装匹配 ${installed.count { it.packageName in library }} 个" else "ZIP 或文件夹",
                         onClick = if (busy || pending != null) null else { { importNotification = false; showImport = true } },
@@ -133,11 +145,16 @@ fun IconLayerScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp, onApp: (S
             items(installed, key = { it.packageName }) { app ->
                 val policy = remember(app.packageName, state.getString("policies"), state.getStringArrayList("originals").toString()) { IconPolicy.read(context, app.packageName) }
                 SettingsGroup {
-                    SettingRow(app.label, when (policy.color) {
+                    SettingRow(app.label, (when (policy.color) {
                         IconPolicy.MANUAL -> "手动前后景"
                         IconPolicy.ALGORITHM -> "算法补全"
                         IconPolicy.ORIGINAL -> "彩色图标不处理"
                         else -> if (app.packageName in library) "自动 · 素材库" else "自动 · 应用原图"
+                    }) + " · 通知：" + when (policy.notification) {
+                        IconPolicy.FOLLOW -> "跟随前景"
+                        IconPolicy.UPLOAD -> "上传图片"
+                        IconPolicy.NOTIFICATION_LIBRARY -> if (app.packageName in notificationLibrary) "通知图标库" else "通知库未匹配，保留原生"
+                        else -> "不处理"
                     }, onClick = { if (selection == null) onApp(app.packageName) else onSelect(app.packageName) },
                         leading = { IconRowAppIcon(app) }, trailing = {
                             if (selection == null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -193,8 +210,6 @@ fun IconBatchDialog(packages: Set<String>, onDismiss: () -> Unit, onApplied: () 
     var color by remember { mutableIntStateOf(-1) }
     var monochrome by remember { mutableIntStateOf(-1) }
     var notification by remember { mutableIntStateOf(-1) }
-    var changeNotificationScale by remember { mutableStateOf(false) }
-    var notificationScale by remember { mutableIntStateOf(IconPolicy.NOTIFICATION_SCALE_DEFAULT) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val masks = listOf(-1 to "保持现有", IconPolicy.FOLLOW to "跟随前景", IconPolicy.UNCHANGED to "不处理")
@@ -207,30 +222,16 @@ fun IconBatchDialog(packages: Set<String>, onDismiss: () -> Unit, onApplied: () 
                     IconPolicy.ALGORITHM to "算法补全", IconPolicy.ORIGINAL to "原图"), !busy) { color = it }
                 IconBatchModes("莫奈图标", monochrome, masks, !busy) { monochrome = it }
                 IconBatchModes("通知图标", notification, masks + (IconPolicy.NOTIFICATION_LIBRARY to "通知图标库"), !busy) { notification = it }
-                GroupTitle("通知图标大小")
-                SettingsGroup {
-                    SettingRow(if (changeNotificationScale) "统一设置大小" else "保持各应用现有大小",
-                        onClick = if (busy) null else ({ changeNotificationScale = !changeNotificationScale }),
-                        trailing = { Switch(changeNotificationScale, onCheckedChange = null, enabled = !busy) })
-                    if (changeNotificationScale && !busy) {
-                        SliderRow("通知图标大小", "仅影响替换的通知小图标，不改变桌面与莫奈图标。",
-                            value = notificationScale,
-                            range = IconPolicy.NOTIFICATION_SCALE_MIN..IconPolicy.NOTIFICATION_SCALE_MAX, unit = "%",
-                            onCommit = { notificationScale = it })
-                        SettingRow("恢复默认大小", onClick = { notificationScale = IconPolicy.NOTIFICATION_SCALE_DEFAULT })
-                    }
-                }
             }
             if (error.isNotBlank()) Hint(error)
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") }
-                Button(enabled = !busy && (color != -1 || monochrome != -1 || notification != -1 || changeNotificationScale), onClick = {
+                Button(enabled = !busy && (color != -1 || monochrome != -1 || notification != -1), onClick = {
                     busy = true
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) { IconPolicy.batch(context, packages, color, monochrome, notification,
-                                if (changeNotificationScale) notificationScale else -1) }
+                            withContext(Dispatchers.IO) { IconPolicy.batch(context, packages, color, monochrome, notification) }
                             onApplied()
                         } catch (e: Exception) { error = e.message ?: "保存失败" }
                         finally { busy = false }

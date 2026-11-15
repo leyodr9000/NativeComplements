@@ -80,6 +80,11 @@ final class Wire {
             .putExtra("package",pkg).putExtra("taskId",-1).putExtra("token",token())
             .putExtra("wakeStep",wakeStep).putExtra("hideRecents",new Config(context).hideRecents()));
     }
+    static void openSidebar(Context context,String pkg,String source){
+        sendRequest(context,new Intent(COMMAND).setPackage("android").putExtra("protocol",PROTOCOL).putExtra("op","OPEN")
+            .putExtra("package",pkg).putExtra("taskId",-1).putExtra("token",token())
+            .putExtra("sidebarLaunch",true).putExtra("sidebarHost",source).putExtra("hideRecents",new Config(context).hideRecents()));
+    }
     static void openNotification(Context context,String pkg,PendingIntent launch,Intent fill,ResultReceiver reply){
         if(!allowedPackage(pkg)||launch==null||!launch.isActivity())throw new IllegalArgumentException("notification activity");
         Intent request=new Intent(COMMAND).setPackage("android").putExtra("protocol",PROTOCOL).putExtra("op","OPEN")

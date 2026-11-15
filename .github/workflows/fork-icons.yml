@@ -45,6 +45,7 @@ jobs:
           :app:testDebugUnitTest
           --tests 'dev.local.sunwindowdemo.features.iconlayers.*'
           --tests 'dev.local.sunwindowdemo.IconBatchUiTest'
+          --tests 'dev.local.sunwindowdemo.Sidebar*'
       - name: Build unsigned R8 release
         run: >-
           bash ./gradlew --no-daemon --console=plain --max-workers=2

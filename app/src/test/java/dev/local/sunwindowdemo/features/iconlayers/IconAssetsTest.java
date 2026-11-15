@@ -85,6 +85,31 @@ public class IconAssetsTest {
         provider.nullReads=0;provider.config=new Bundle();reload();assertTrue(IconAssets.ready());assertEquals(1,callbacks);
     }
 
+    @Test public void oneGlobalSnapshotScaleOverridesEveryLegacyAppScaleAndDoesNotReadPrefsWhileDrawing()throws Exception{
+        String second="com.example.second";
+        PackageInfo app=new PackageInfo();app.packageName=second;app.applicationInfo=new ApplicationInfo();app.applicationInfo.packageName=second;
+        Shadows.shadowOf(context.getPackageManager()).installPackage(app);
+        Shadows.shadowOf(context.getPackageManager()).setApplicationIcon(second,new ColorDrawable(Color.RED));
+        provider.config.putStringArrayList("targets",new ArrayList<>(List.of(PKG,second)));
+        provider.config.putStringArrayList("packages",new ArrayList<>(List.of(PKG,second)));
+        provider.config.putString("policies","{\""+PKG+"\":{\"notification\":0,\"notificationScale\":180},\""+second+"\":{\"notification\":0,\"notificationScale\":65}}");
+        provider.config.putBoolean("notifications",true);
+        Bitmap glyph=Bitmap.createBitmap(32,32,Bitmap.Config.ARGB_8888);
+        Paint ink=new Paint();ink.setColor(Color.WHITE);new Canvas(glyph).drawRect(12,4,20,28,ink);
+        try(var stream=new FileOutputStream(provider.foreground)){assertTrue(glyph.compress(Bitmap.CompressFormat.PNG,100,stream));}
+        assertTrue(IconAssets.load(context,provider.config,()->false));
+        assertNotNull(IconAssets.notification(context,PKG));assertNotNull(IconAssets.notification(context,second));
+        assertEquals(100,IconAssets.notificationScale(PKG));assertEquals(100,IconAssets.notificationScale(second));
+        provider.config.putInt("notificationScale",140);
+        assertTrue(IconAssets.load(context,provider.config,()->false));
+        assertEquals(140,IconAssets.snapshot().entries().get(PKG).notificationScale());
+        assertEquals(140,IconAssets.snapshot().entries().get(second).notificationScale());
+        IconLayerStore.prefs(context).edit().putInt("notificationScale",190).commit();
+        assertEquals("Draw accessor must stay on the published snapshot, not consult preferences",140,IconAssets.notificationScale(PKG));
+        assertFalse(IconAssets.load(context,new Bundle(provider.config),()->true));
+        assertEquals(140,IconAssets.notificationScale(second));
+    }
+
     public static class TestProvider extends ContentProvider {
         Bundle config;int reads,nullReads,emptyReads;File background,foreground;
         @Override public boolean onCreate(){return true;}

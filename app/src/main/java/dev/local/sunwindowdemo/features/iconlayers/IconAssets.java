@@ -92,7 +92,8 @@ public final class IconAssets {
                 if(!config.getBoolean("notifications"))p.notification=IconPolicy.UNCHANGED;
                 try{
                     Entry entry=resolve(c,pkg,p,libraryPackages.contains(pkg)?generation:"",side,false,
-                        notificationPackages.contains(pkg)?config.getString("notificationGeneration",""):"");
+                        notificationPackages.contains(pkg)?config.getString("notificationGeneration",""):"",
+                        config.getInt("notificationScale",IconPolicy.NOTIFICATION_SCALE_DEFAULT));
                     if(entry!=null){
                         long size=0;for(Bitmap b:new Bitmap[]{entry.background,entry.foreground,entry.mono,entry.notification})if(b!=null)size+=b.getAllocationByteCount();
                         // ponytail: exceptionally large matching libraries retain originals past this bound, never publish blurred replacements.
@@ -144,6 +145,11 @@ public final class IconAssets {
         return resolve(c,pkg,policy,generation,side,local,notificationGeneration);
     }
     static Entry resolve(Context c,String pkg,IconPolicy policy,String generation,int side,boolean local,String notificationGeneration) throws Exception {
+        // Local previews read the same top-level value; host loads pass an immutable config snapshot below.
+        int scale=local?IconLayerStore.notificationScale(c):IconPolicy.NOTIFICATION_SCALE_DEFAULT;
+        return resolve(c,pkg,policy,generation,side,local,notificationGeneration,scale);
+    }
+    static Entry resolve(Context c,String pkg,IconPolicy policy,String generation,int side,boolean local,String notificationGeneration,int globalScale) throws Exception {
         ApplicationInfo info=c.getPackageManager().getApplicationInfo(pkg,0);
         Drawable original=c.getPackageManager().getApplicationIcon(info);
         if(policy.color==IconPolicy.ORIGINAL&&policy.monochrome==IconPolicy.UNCHANGED&&policy.notification==IconPolicy.UNCHANGED)return null;
@@ -178,7 +184,7 @@ public final class IconAssets {
         }
         // A legacy flat Drawable has no independent themed slot. Leaving its color untouched also preserves native wrapping.
         if(policy.color==IconPolicy.ORIGINAL&&!(original instanceof AdaptiveIconDrawable))monoChanged=false;
-        return colorChanged||monoChanged||notice!=null?new Entry(IconImages.compactSolid(bg),fg,mono,notice,colorChanged,monoChanged,nativeColor,IconPolicy.notificationScale(policy.notificationScale)):null;
+        return colorChanged||monoChanged||notice!=null?new Entry(IconImages.compactSolid(bg),fg,mono,notice,colorChanged,monoChanged,nativeColor,IconPolicy.notificationScale(globalScale)):null;
     }
     private static Bitmap custom(Context c,String id,int side,boolean local) throws Exception{
         if(IconPolicy.asset(id).isEmpty())return null;

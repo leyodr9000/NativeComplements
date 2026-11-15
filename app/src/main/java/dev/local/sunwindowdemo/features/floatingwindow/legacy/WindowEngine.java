@@ -541,7 +541,18 @@ final class WindowEngine {
         try {
             if(generation!=openGeneration){clearShortcutLaunch(generation);completeOpen(request,false);return;}
             long began=request.getLongExtra("began",0);
-            if(began==0){began=SystemClock.elapsedRealtime();request.putExtra("began",began);}
+            if(began==0){
+                if(request.getBooleanExtra("sidebarLaunch",false)){
+                    String expected=request.getStringExtra("sidebarHost");
+                    synchronized(lock){
+                        NativeForeground current=nativeForeground();Object full=current==null?null:current.fullscreen;
+                        Object top=full==null?null:a.call(full,"topRunningActivity");
+                        String actual=top==null?null:(String)a.field(top,"packageName");
+                        if(!Wire.allowedPackage(expected)||!expected.equals(actual))throw new IllegalStateException("已离开侧边栏指定应用");
+                    }
+                }
+                began=SystemClock.elapsedRealtime();request.putExtra("began",began);
+            }
             if(SystemClock.elapsedRealtime()-began>12000)throw new IllegalStateException("等待应用/转场超时，phase="+request.getStringExtra("phase"));
             if(!Wire.allowedPackage(pkg)||Wire.PKG.equals(pkg))throw new IllegalArgumentException("请选择可启动应用");
             requireUnlocked("请先解锁");
@@ -556,7 +567,7 @@ final class WindowEngine {
                 Session retained=null;
                 synchronized(lock){for(Session s:sessions)if(pkg.equals(s.pkg)&&live(s)){retained=s;break;}}
                 if(retained!=null){
-                    if(!presentExisting(retained,request.getBooleanExtra("wakeStep",false))){
+                    if(!presentExisting(retained,request.getBooleanExtra("wakeStep",false),request.getBooleanExtra("sidebarLaunch",false))){
                         waitOpen(request,attempt,"wait-session",retained.taskId);return;
                     }
                     request.putExtra("taskId",retained.taskId);completeOpen(request,true);report("REOPEN");return;
@@ -654,7 +665,7 @@ final class WindowEngine {
             request.putExtra("taskId",id);
             Session retained=sessionFor(candidate[0]);
             if(retained!=null&&!retained.restoring){
-                if(!presentExisting(retained,false)){
+                if(!presentExisting(retained,false,request.getBooleanExtra("sidebarLaunch",false))){
                     waitOpen(request,attempt,"wait-session",id);return;
                 }
                 completeOpen(request,true);clearShortcutLaunch(generation);report("INTENT_REUSED");return;
@@ -1019,12 +1030,15 @@ final class WindowEngine {
     }
     /** Every package open and original-intent reuse goes through the same presentation path. */
     private boolean presentExisting(Session next,boolean step)throws Exception{
+        return presentExisting(next,step,false);
+    }
+    private boolean presentExisting(Session next,boolean step,boolean sidebarLaunch)throws Exception{
         synchronized(lock){
             if(!live(next)||next.closing||next.fullTransition||next.returning||next.entering||next.transitioning||pendingStart!=null)return false;
             if(updateOrientation(next)&&visible(next))refresh(next);
             String target=WindowNavigation.wakeForm(next.frame,next.edgeHidden,step);
             if(visible(next)){
-                if("restore-mini".equals(target)){changeForm(next,target);return true;}
+                if(!sidebarLaunch&&"restore-mini".equals(target)){changeForm(next,target);return true;}
                 if("mini".equals(next.frame))changeForm(next,"normal");
             }else{
                 Session previous=active;
@@ -3179,6 +3193,17 @@ final class WindowEngine {
             Object focused=a.focused.invoke(root);String foreground="";
             if(focused!=null){Object top=a.call(focused,"topRunningActivity");if(top!=null)foreground=(String)a.field(top,"packageName");}
             out.putExtra("foreground",foreground);
+            // A mini/normal managed window can own focus while a game remains the real fullscreen host.
+            String fullscreenPackage="";
+            try{
+                NativeForeground current=nativeForeground();
+                Object full=current==null?null:current.fullscreen;
+                if(full!=null&&a.integer(full,"getActivityType")==1&&(Integer)a.field(full,"mUserId")==0
+                    &&(Integer)a.field(a.call(full,"getDisplayContent"),"mDisplayId")==0){
+                    Object top=a.call(full,"topRunningActivity");if(top!=null)fullscreenPackage=(String)a.field(top,"packageName");
+                }
+            }catch(Exception unavailable){/* Unknown fullscreen identity hides the allowlisted sidebar. */}
+            out.putExtra("sidebarForeground",fullscreenPackage);
             Object display=a.call(root,"getDefaultDisplay");
             Object ime=a.call(display,"getImeWindow");boolean visible=ime!=null&&a.bool(ime,"isVisible");
             Rect bounds=(Rect)a.call(display,"getBounds");

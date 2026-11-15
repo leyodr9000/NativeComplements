@@ -319,7 +319,10 @@ public class IconImagesTest {
         Paint ink=new Paint();ink.setColor(Color.WHITE);new Canvas(nativeForeground).drawRect(20,12,44,52,ink);
         Shadows.shadowOf(c.getPackageManager()).setApplicationIcon(PKG,new BitmapDrawable(c.getResources(),nativeForeground));
         var entry=IconAssets.resolve(c,PKG,saved,"",64,true);
-        assertNotNull(entry);assertNotNull(entry.notification());assertEquals(150,entry.notificationScale());
+        assertNotNull(entry);assertNotNull(entry.notification());
+        assertEquals("Legacy per-app size remains serialized but no longer affects preview/runtime",100,entry.notificationScale());
+        IconLayerStore.notificationScale(c,140);
+        assertEquals(140,IconAssets.resolve(c,PKG,saved,"",64,true).notificationScale());
     }
     @Test public void notificationLibraryDoesNotChangeDesktopAndMissingOrInvalidMasksRetainNative()throws Exception{
         Shadows.shadowOf(c.getPackageManager()).setApplicationIcon(PKG,new AdaptiveIconDrawable(new ColorDrawable(Color.MAGENTA),new ColorDrawable(Color.GREEN)));
