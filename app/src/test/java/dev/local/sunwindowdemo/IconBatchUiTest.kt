@@ -97,6 +97,8 @@ class IconBatchUiTest {
 
     @Test fun perAppScreenExplainsGlobalSizeButHasNoIndependentSlider() {
         val context = compose.activity
+        Shadows.shadowOf(context.packageManager).setApplicationIcon(context.packageName,
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.BLUE))
         IconLayerStore.prefs(context).edit().clear().commit()
         IconPolicy.save(context, context.packageName, IconPolicy().apply { notification = IconPolicy.FOLLOW })
         compose.setContent {

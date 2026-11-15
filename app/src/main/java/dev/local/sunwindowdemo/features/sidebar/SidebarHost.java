@@ -44,7 +44,7 @@ final class SidebarHost implements AutoCloseable {
     private WindowManager.LayoutParams params(int width,int height,String title){
         WindowManager.LayoutParams p=new WindowManager.LayoutParams(width,height,SystemUiHost.OVERLAY_TYPE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-            |WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,PixelFormat.TRANSLUCENT);
+            |WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN|WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,PixelFormat.TRANSLUCENT);
         p.gravity=Gravity.TOP|Gravity.LEFT;p.setTitle(title);p.windowAnimations=0;p.setFitInsetsTypes(0);
         SystemUiHost.trust(p);return p;
     }

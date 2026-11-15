@@ -83,11 +83,14 @@ fun SidebarScreen(apps: List<LaunchableApp>, bottomInset: Dp = 0.dp) {
         val hostPicker = picker == 1
         var selected by remember(picker) { mutableStateOf(if (hostPicker) state.hosts().toList() else state.apps()) }
         var query by remember(picker) { mutableStateOf("") }
+        var showSearch by remember(picker) { mutableStateOf(false) }
         var pickerError by remember(picker) { mutableStateOf("") }
         AlertDialog(onDismissRequest = { picker = 0 }, title = { Text(if (hostPicker) "选择显示应用" else "选择小窗应用") },
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
-                    OutlinedTextField(query, { query = it }, label = { Text("搜索应用") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    // Do not focus an input field or open the keyboard merely by opening an app chooser.
+                    if (showSearch) OutlinedTextField(query, { query = it }, label = { Text("搜索应用") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    else TextButton(onClick = { showSearch = true }) { Text("搜索应用") }
                     Text("已选择 ${selected.size} / ${if (hostPicker) 100 else 12}", Modifier.padding(vertical = 8.dp))
                     LazyColumn(Modifier.weight(1f)) {
                         items(apps.filter { it.packageName != "dev.nativecomplements.module" && (it.label.contains(query, true) || it.packageName.contains(query, true)) }, key = { it.packageName }) { app ->
