@@ -60,8 +60,9 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             Wire.openSwipeDrop(SystemUiHost.this,pkg,task);
         }catch(Exception failure){android.util.Log.w("NcSwipeDrop","handoff rejected",failure);}
     }};
+    private boolean backendSwipeDrop;
     private boolean swipeDropReady(){
-        return ready()&&config.enabled()&&config.prefs.getBoolean("swipeDropEnabled",false)&&backendReady
+        return backendSwipeDrop&&ready()&&config.enabled()&&config.prefs.getBoolean("swipeDropEnabled",false)&&backendReady
             &&"idle".equals(backendState)&&activeTask<0&&!normalOccupied&&pinnedTask<0&&!screenshotVisible&&!systemFocus&&!keyboard
             &&panel==null&&openWait==null&&fan==null&&getSystemService(android.os.PowerManager.class).isInteractive()
             &&!getSystemService(KeyguardManager.class).isKeyguardLocked();
@@ -261,7 +262,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         if(cleaned||controls==null)return;
         backendReady=true;backendState=i.getStringExtra("state");normalOccupied=i.getBooleanExtra("normalOccupied",true);
         updateOpenWait(i);
-        if(i.hasExtra("foreground")){foregroundSeen=android.os.SystemClock.elapsedRealtime();sidebarForeground=i.getStringExtra("sidebarForeground");foreground=i.getStringExtra("foreground");keyboard=i.getBooleanExtra("imeVisible",false);systemFocus=i.getBooleanExtra("systemOverlay",false);
+        if(i.hasExtra("foreground")){backendSwipeDrop=i.getBooleanExtra("supportsSwipeDrop",false);foregroundSeen=android.os.SystemClock.elapsedRealtime();sidebarForeground=i.getStringExtra("sidebarForeground");foreground=i.getStringExtra("foreground");keyboard=i.getBooleanExtra("imeVisible",false);systemFocus=i.getBooleanExtra("systemOverlay",false);
             systemOverlayTitle=i.getStringExtra("systemOverlayTitle");
             suggestionImeTop=i.getIntExtra("imeTop",Integer.MAX_VALUE);
             updateOverlayPriority();controls.imeTop(suggestionImeTop);miniControls.imeTop(suggestionImeTop);refresh();}

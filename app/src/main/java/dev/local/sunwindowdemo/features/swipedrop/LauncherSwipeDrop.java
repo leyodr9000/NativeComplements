@@ -81,7 +81,7 @@ final class LauncherSwipeDrop implements AutoCloseable {
             if(!ready()){reset();return;}
             if(e.display!=0)return;
             if(e.action==MotionEvent.ACTION_DOWN){
-                reset();var b=wm.getCurrentWindowMetrics().getBounds();width=b.width();height=b.height();rotation=context.getDisplay()==null?0:context.getDisplay().getRotation();
+                reset();var b=wm.getCurrentWindowMetrics().getBounds();width=b.width();height=b.height();
                 Object r=resource.invoke(owner,0);Object g=r==null?null:gesture.get(r);if(g==null)return;
                 int id=(Integer)taskId.invoke(g);Object task=runningTask.invoke(g);
                 if(!SwipeDropPolicy.canStart(true,true,true,e.finger,e.display,e.pointers,id,task==null||(Boolean)isHome.invoke(task),width,height,e.y))return;

@@ -3193,6 +3193,7 @@ final class WindowEngine {
         if(!Wire.transmit(frameSink,i))frameSink=null;
     }
     private void environment(Intent out){
+        out.putExtra("supportsSwipeDrop",true);
         synchronized(lock){try{
             Object focused=a.focused.invoke(root);String foreground="";
             if(focused!=null){Object top=a.call(focused,"topRunningActivity");if(top!=null)foreground=(String)a.field(top,"packageName");}
