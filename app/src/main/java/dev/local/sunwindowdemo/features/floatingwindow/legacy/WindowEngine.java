@@ -465,10 +465,8 @@ final class WindowEngine {
             }
             trace.arm(pkg,openGeneration);
             s.entryFade=i.getBooleanExtra("predictiveEntry",false)||!i.getBooleanExtra("morphEntry",false);
-            if(i.getBooleanExtra("initialMini",false)){
-                if(!sessions.isEmpty())throw new IllegalStateException("先关闭现有小窗后再使用上滑挂起");
-                s.frame="mini";s.entryFade=true;
-            }
+            boolean initialMini=i.getBooleanExtra("initialMini",false);
+            if(initialMini&&(!sessions.isEmpty()||normalOccupied()))throw new IllegalStateException("先关闭现有小窗后再使用上滑挂起");
             bindLease(s,lease);
             try {
                 save(s); // Durable original state BEFORE the first task mutation.
@@ -518,6 +516,9 @@ final class WindowEngine {
                 history.windowed(new WindowHistory.Entry(s.taskId,s.userId,s.pkg,s.component,s.baseId));saveHistory();
                 notifyRecents();
                 settleNewDefault(displaced,s);
+                if(initialMini){
+                    synchronized(lock){state(s,"mini");}
+                }
                 completeOpen(i,true);
                 note("ACTIVE：小窗已开启，无定时退出");
                 if(SystemClock.elapsedRealtime()>=s.nextStatus) {s.nextStatus=SystemClock.elapsedRealtime()+1000;report("TICK");}
