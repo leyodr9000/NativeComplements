@@ -11,8 +11,8 @@ android {
         applicationId = "dev.nativecomplements.module"
         minSdk = 34
         targetSdk = 37
-        versionCode = 115
-        versionName = "0.9.21-fork6-original-more"
+        versionCode = 116
+        versionName = "0.9.21-fork7-swipe-drop"
     }
     signingConfigs {
         create("demoUpdate") {

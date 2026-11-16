@@ -51,6 +51,21 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             if(WindowShortcutActivity.ACTION.equals(i.getAction()))main.postDelayed(()->floatCurrent(0),120);else loadSettings();
         }}catch(Exception ignored){}
     }};
+    private final BroadcastReceiver swipeDropReceiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){
+        try{
+            if(getSentFromUid()!=getPackageManager().getApplicationInfo(LauncherGuard.PACKAGE,0).uid)return;
+            if(!swipeDropReady()||android.os.SystemClock.elapsedRealtime()-i.getLongExtra("time",0)>1000)return;
+            String pkg=i.getStringExtra("package");int task=i.getIntExtra("taskId",-1);
+            if(task<0||!Wire.allowedPackage(pkg)||config.blocked().contains(pkg)||Wire.PKG.equals(pkg)||LauncherGuard.PACKAGE.equals(pkg))return;
+            Wire.openSwipeDrop(SystemUiHost.this,pkg,task);
+        }catch(Exception failure){android.util.Log.w("NcSwipeDrop","handoff rejected",failure);}
+    }};
+    private boolean swipeDropReady(){
+        return ready()&&config.enabled()&&config.prefs.getBoolean("swipeDropEnabled",false)&&backendReady
+            &&"idle".equals(backendState)&&activeTask<0&&!normalOccupied&&pinnedTask<0&&!screenshotVisible&&!systemFocus&&!keyboard
+            &&panel==null&&openWait==null&&fan==null&&getSystemService(android.os.PowerManager.class).isInteractive()
+            &&!getSystemService(KeyguardManager.class).isKeyguardLocked();
+    }
     private final BroadcastReceiver queryReceiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){
         try{int uid=getSentFromUid();if(uid==getPackageManager().getApplicationInfo(LauncherGuard.PACKAGE,0).uid||uid==getApplicationInfo().uid)publish(true);}catch(Exception ignored){}
     }};
@@ -136,7 +151,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         }
     }
     private boolean publishedEnabled;
-    private boolean publishedDrop,publishedImmersive;
+    private boolean publishedDrop,publishedImmersive,publishedSwipeDrop;
     private int activeTask=-1,pinnedTask=-1,publishedHidden=-2;
     private final java.util.concurrent.atomic.AtomicBoolean backPending=new java.util.concurrent.atomic.AtomicBoolean();
     private final android.os.Binder dropChannel=new android.os.Binder(){
@@ -260,6 +275,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             if(mini==null)miniControls.hide();else miniControls.update(mini);
         }}catch(RuntimeException e){hideControls();android.util.Log.e("NativeComplements","overlay controls failed",e);}
         updateSidebar();
+        if(i.hasExtra("foreground"))publish(true);
         if(i.getStringExtra("event")!=null&&(i.getStringExtra("event").endsWith("FAILED")||"BLOCKED".equals(i.getStringExtra("event"))))Toast.makeText(this,WindowPolicy.failureMessage(i.getStringExtra("report")),Toast.LENGTH_SHORT).show();
     }
     private List<AppCatalog.App> all=List.of();
@@ -302,6 +318,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         registerReceiver(packageReceiver,pkgs,Context.RECEIVER_NOT_EXPORTED);
         registerReceiver(settingsReceiver,settingsFilter(),null,main,Context.RECEIVER_EXPORTED);
         registerReceiver(queryReceiver,new IntentFilter(LauncherGuard.QUERY),null,main,Context.RECEIVER_EXPORTED);
+        registerReceiver(swipeDropReceiver,new IntentFilter(LauncherSwipeDrop.DROP),null,main,Context.RECEIVER_EXPORTED);
         getApplicationContext().registerComponentCallbacks(this);
         dev.local.sunwindowdemo.features.iconlayers.IconAssets.onReload(iconsReloaded);
         dev.local.sunwindowdemo.features.iconlayers.IconAssets.connect(getApplicationContext());
@@ -451,11 +468,12 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         enabled=(enabled&&count>0)||handles.length>0;
         android.graphics.Rect bounds=wm==null?new android.graphics.Rect():wm.getCurrentWindowMetrics().getBounds();
         int hidden=config!=null&&config.hideRecents()?activeTask:-1;
-        if(!force&&publishedImmersive==immersive&&publishedHidden==hidden&&publishedDrop==dropEnabled&&publishedEnabled==enabled&&publishedWidth==bounds.width()&&publishedHeight==bounds.height()&&java.util.Arrays.equals(published,rects)&&java.util.Arrays.equals(publishedHandles,handles))return;
-        publishedDrop=dropEnabled;publishedHidden=hidden;publishedImmersive=immersive;
+        if(!force&&publishedSwipeDrop==swipeDropReady()&&publishedImmersive==immersive&&publishedHidden==hidden&&publishedDrop==dropEnabled&&publishedEnabled==enabled&&publishedWidth==bounds.width()&&publishedHeight==bounds.height()&&java.util.Arrays.equals(published,rects)&&java.util.Arrays.equals(publishedHandles,handles))return;
+        publishedDrop=dropEnabled;publishedHidden=hidden;publishedImmersive=immersive;publishedSwipeDrop=swipeDropReady();
         publishedEnabled=enabled;publishedWidth=bounds.width();publishedHeight=bounds.height();published=rects.clone();publishedHandles=handles.clone();
         Intent state=new Intent(LauncherGuard.STATE).setPackage(LauncherGuard.PACKAGE).putExtra("enabled",enabled)
             .putExtra("width",bounds.width()).putExtra("height",bounds.height()).putExtra("rects",rects);
+        state.putExtra("swipeDropEnabled",swipeDropReady());
         state.putExtra("handleRects",handles).putExtra("immersive",immersive).putExtra("hiddenTask",hidden).putExtra("dropEnabled",dropEnabled).putExtra("density",getResources().getDisplayMetrics().density);
         android.os.Bundle extras=new android.os.Bundle();extras.putBinder("lease",lease);extras.putBinder("dropChannel",dropChannel);state.putExtras(extras);
         sendBroadcast(state,null,android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
@@ -651,5 +669,5 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     }
     @Override public void onConfigurationChanged(Configuration c){if(sidebar!=null)sidebar.hide();foregroundSeen=0;cancelOpenWait();hideFan();hidePanel();removeHot();refresh();Wire.send(this,"STATUS");}
     @Override public void onLowMemory(){}
-    private void cleanup(){if(cleaned)return;if(sidebar!=null){sidebar.close();sidebar=null;}dev.local.sunwindowdemo.features.iconlayers.IconAssets.removeOnReload(iconsReloaded);cancelOpenWait();if(barrage!=null){barrage.close();barrage=null;}if(quick!=null){quick.close();quick=null;}if(suggestions!=null){suggestions.close();suggestions=null;}if(edgeTouch!=null){edgeTouch.close();edgeTouch=null;}settingsWorker.shutdownNow();try{getApplicationContext().unregisterComponentCallbacks(this);}catch(RuntimeException ignored){}for(BroadcastReceiver receiver:new BroadcastReceiver[]{settingsReceiver,queryReceiver,backendReceiver,screenReceiver,packageReceiver})try{unregisterReceiver(receiver);}catch(RuntimeException ignored){}if(controls!=null){controls.close();}if(miniControls!=null)miniControls.close();Wire.listen(null);cleaned=true;connected=false;if(live==this)live=null;main.removeCallbacksAndMessages(null);hideFan();hidePanel();removeHot();publish(true);if(config!=null)config.prefs.unregisterOnSharedPreferenceChangeListener(prefListener);}
+    private void cleanup(){if(cleaned)return;if(sidebar!=null){sidebar.close();sidebar=null;}dev.local.sunwindowdemo.features.iconlayers.IconAssets.removeOnReload(iconsReloaded);cancelOpenWait();if(barrage!=null){barrage.close();barrage=null;}if(quick!=null){quick.close();quick=null;}if(suggestions!=null){suggestions.close();suggestions=null;}if(edgeTouch!=null){edgeTouch.close();edgeTouch=null;}settingsWorker.shutdownNow();try{getApplicationContext().unregisterComponentCallbacks(this);}catch(RuntimeException ignored){}for(BroadcastReceiver receiver:new BroadcastReceiver[]{settingsReceiver,queryReceiver,swipeDropReceiver,backendReceiver,screenReceiver,packageReceiver})try{unregisterReceiver(receiver);}catch(RuntimeException ignored){}if(controls!=null){controls.close();}if(miniControls!=null)miniControls.close();Wire.listen(null);cleaned=true;connected=false;if(live==this)live=null;main.removeCallbacksAndMessages(null);hideFan();hidePanel();removeHot();publish(true);if(config!=null)config.prefs.unregisterOnSharedPreferenceChangeListener(prefListener);}
 }

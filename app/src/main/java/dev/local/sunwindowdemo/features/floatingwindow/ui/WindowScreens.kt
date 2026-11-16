@@ -28,6 +28,11 @@ fun WindowScreen(p: WindowPreferences, navigate: (Page) -> Unit, toggleControl: 
 @Composable
 fun GestureScreen(p: WindowPreferences, boolean: (String, Boolean) -> Unit, number: (String, Int) -> Unit) {
     SettingsGroup {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        var swipeDrop by remember { mutableStateOf(context.getSharedPreferences("corner",0).getBoolean("swipeDropEnabled",false)) }
+        ToggleRow("上滑到右上角挂起", "Pixel 桌面原生上滑过程中拖入右上角后松手，转为迷你小窗；默认关闭，接口不匹配时保持原生手势", swipeDrop) {
+            swipeDrop = it; boolean("swipeDropEnabled", it)
+        }
         ToggleRow("长侧滑打开小窗", "从屏幕侧边向内长滑，松手后将当前应用转为小窗", value = p.longBackWindow) { boolean("longBackWindow", it) }
         ToggleRow("关闭顶部提示", value = p.hideTopHint) { boolean("hideTopHint", it) }
     }

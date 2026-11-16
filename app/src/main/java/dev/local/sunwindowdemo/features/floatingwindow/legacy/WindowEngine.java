@@ -465,6 +465,10 @@ final class WindowEngine {
             }
             trace.arm(pkg,openGeneration);
             s.entryFade=i.getBooleanExtra("predictiveEntry",false)||!i.getBooleanExtra("morphEntry",false);
+            if(i.getBooleanExtra("initialMini",false)){
+                if(!sessions.isEmpty())throw new IllegalStateException("先关闭现有小窗后再使用上滑挂起");
+                s.frame="mini";s.entryFade=true;
+            }
             bindLease(s,lease);
             try {
                 save(s); // Durable original state BEFORE the first task mutation.

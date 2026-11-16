@@ -80,6 +80,11 @@ final class Wire {
             .putExtra("package",pkg).putExtra("taskId",-1).putExtra("token",token())
             .putExtra("wakeStep",wakeStep).putExtra("hideRecents",new Config(context).hideRecents()));
     }
+    static void openSwipeDrop(Context context,String pkg,int task){
+        sendRequest(context,new Intent(COMMAND).setPackage("android").putExtra("protocol",PROTOCOL).putExtra("op","GESTURE")
+            .putExtra("package",pkg).putExtra("taskId",task).putExtra("token",token())
+            .putExtra("initialMini",true).putExtra("hideRecents",new Config(context).hideRecents()));
+    }
     static void openSidebar(Context context,String pkg,String source){
         sendRequest(context,new Intent(COMMAND).setPackage("android").putExtra("protocol",PROTOCOL).putExtra("op","OPEN")
             .putExtra("package",pkg).putExtra("taskId",-1).putExtra("token",token())

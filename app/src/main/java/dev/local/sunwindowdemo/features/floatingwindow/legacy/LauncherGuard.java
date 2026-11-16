@@ -22,6 +22,7 @@ public final class LauncherGuard extends XposedModule {
     private BroadcastReceiver receiver,historyReceiver;
     private int claims;
     private RecentsFilter recents;
+    private LauncherSwipeDrop swipeDrop;
     private IBinder visualLease;
     @Override public void onModuleLoaded(ModuleLoadedParam p){eligible=!p.isSystemServer()&&(PACKAGE.equals(p.getProcessName())||p.getProcessName().startsWith(PACKAGE+":"));}
     @Override public synchronized void onPackageLoaded(PackageLoadedParam p){
@@ -30,6 +31,7 @@ public final class LauncherGuard extends XposedModule {
         List<XposedInterface.HookHandle> handles=new ArrayList<>();
         try{
             ClassLoader loader=p.getDefaultClassLoader();
+            try{swipeDrop=new LauncherSwipeDrop(loader,this::note);}catch(Exception unavailable){note("SWIPE_DROP_UNAVAILABLE "+unavailable.getClass().getSimpleName());}
             Class<?> handler=Class.forName("com.android.quickstep.TouchInteractionHandler",false,loader);
             Class<?> service=Class.forName("com.android.quickstep.TouchInteractionService",false,loader);
             Method event=handler.getDeclaredMethod("onInputEvent",InputEvent.class);
@@ -53,7 +55,16 @@ public final class LauncherGuard extends XposedModule {
                         if(e.getActionMasked()==MotionEvent.ACTION_DOWN&&claims++<30)note("GUARD_OWNED corner-stream");
                         return null;
                     }
-                    return chain.proceed();
+                    LauncherSwipeDrop current=swipeDrop;LauncherSwipeDrop.Point point=null;Runnable release=null;
+                    try{if(current!=null){point=current.capture(e);release=current.release(chain.getThisObject(),point);}}
+                    catch(Exception failure){if(current!=null)current.reset();}
+                    Object result;
+                    try{result=chain.proceed();}catch(Throwable failure){if(current!=null)current.reset();throw failure;}
+                    if(current!=null&&point!=null){
+                        if(e.getActionMasked()==MotionEvent.ACTION_UP){if(release!=null)release.run();else current.reset();}
+                        else current.after(chain.getThisObject(),point);
+                    }
+                    return result;
                 }
                 return chain.proceed();
             }));
@@ -70,10 +81,13 @@ public final class LauncherGuard extends XposedModule {
     private void connect(Context service){
         disconnect();context=service.getApplicationContext();
         LauncherRotationSuggestion.connect(context);
+        if(swipeDrop!=null)try{swipeDrop.connect(service);}catch(Exception failure){swipeDrop.close();note("SWIPE_DROP_OVERLAY_UNAVAILABLE");}
         BackVisual.publish(context);
         receiver=new BroadcastReceiver(){public void onReceive(Context c,Intent intent){
             if(!STATE.equals(intent.getAction()))return;
             try{if(getSentFromUid()!=context.getPackageManager().getApplicationInfo(BackBridge.PACKAGE,0).uid)return;}catch(Exception e){return;}
+            android.os.Bundle swipeExtras=intent.getExtras();
+            if(swipeDrop!=null)swipeDrop.configure(intent.getBooleanExtra("swipeDropEnabled",false),swipeExtras==null?null:swipeExtras.getBinder("lease"));
             if(!intent.getBooleanExtra("enabled",false)){gate.disable();note("GUARD_STATE disabled");return;}
             android.os.Bundle extras=intent.getExtras();
             IBinder lease=extras==null?null:extras.getBinder("lease");
@@ -91,6 +105,6 @@ public final class LauncherGuard extends XposedModule {
             android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
         context.sendBroadcast(new Intent(QUERY).setPackage(BackBridge.PACKAGE),null,android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
     }
-    private void disconnect(){gate.disable();visualLease=null;if(context!=null&&receiver!=null)try{context.unregisterReceiver(receiver);}catch(RuntimeException ignored){}if(context!=null&&historyReceiver!=null)try{context.unregisterReceiver(historyReceiver);}catch(RuntimeException ignored){}context=null;receiver=null;historyReceiver=null;}
+    private void disconnect(){if(swipeDrop!=null)swipeDrop.close();gate.disable();visualLease=null;if(context!=null&&receiver!=null)try{context.unregisterReceiver(receiver);}catch(RuntimeException ignored){}if(context!=null&&historyReceiver!=null)try{context.unregisterReceiver(historyReceiver);}catch(RuntimeException ignored){}context=null;receiver=null;historyReceiver=null;}
     private void note(String s){try{log(4,"CornerGuard",s);}catch(Throwable ignored){}}
 }

@@ -1,5 +1,9 @@
 # Source attribution
 
+## Optional upper-right Quickstep entry (personal fork)
+
+Interaction research reference: https://github.com/LFRon/MiFreeForm at bceb9ed9231be0f1aa784fde3d029dadcecb154c (GPL-2.0). Consulted to understand the public-facing swipe-to-upper-right workflow and platform ABI names. No source files, artwork, source-buffer bridge, retained-snapshot protocol or resources from that project are bundled. The conservative adapter, source identity gate, existing NativeComplements IPC routing and rounded drop-target artwork are independently implemented for this fork. It does not claim to reproduce MiFreeForm's seamless retained-buffer handoff.
+
 Feature-entry, menu, quick-function and suggestion icons: Google Material Symbols Rounded, filled 24px Android vectors, Apache-2.0.
 Source: https://github.com/google/material-design-icons/tree/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android
 Assets are stored as ic_game_*.xml, ic_qs_*.xml, ic_suggestion_*.xml and ic_barrage_notes.xml. The flashlight and airplane glyphs reuse the Android Open Source Project SystemUI vectors
