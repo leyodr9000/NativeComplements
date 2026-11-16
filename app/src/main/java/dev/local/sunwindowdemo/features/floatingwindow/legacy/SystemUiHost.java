@@ -54,6 +54,11 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
     private final BroadcastReceiver swipeDropReceiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){
         try{
             if(getSentFromUid()!=getPackageManager().getApplicationInfo(LauncherGuard.PACKAGE,0).uid)return;
+            if((LauncherSwipeDrop.DROP+".STATUS").equals(i.getAction())){
+                String status=i.getStringExtra("status");if(status==null||status.length()>240)return;
+                android.os.Bundle data=new android.os.Bundle();data.putString("status",status);
+                settingsWorker.execute(()->{try{getContentResolver().call(android.net.Uri.parse("content://"+ConfigProvider.AUTHORITY),"swipeDropStatus",null,data);}catch(Exception ignored){}});return;
+            }
             if(!swipeDropReady()||android.os.SystemClock.elapsedRealtime()-i.getLongExtra("time",0)>1000)return;
             String pkg=i.getStringExtra("package");int task=i.getIntExtra("taskId",-1);
             if(task<0||!Wire.allowedPackage(pkg)||config.blocked().contains(pkg)||Wire.PKG.equals(pkg)||LauncherGuard.PACKAGE.equals(pkg))return;
@@ -319,7 +324,8 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         registerReceiver(packageReceiver,pkgs,Context.RECEIVER_NOT_EXPORTED);
         registerReceiver(settingsReceiver,settingsFilter(),null,main,Context.RECEIVER_EXPORTED);
         registerReceiver(queryReceiver,new IntentFilter(LauncherGuard.QUERY),null,main,Context.RECEIVER_EXPORTED);
-        registerReceiver(swipeDropReceiver,new IntentFilter(LauncherSwipeDrop.DROP),null,main,Context.RECEIVER_EXPORTED);
+        IntentFilter swipeFilter=new IntentFilter(LauncherSwipeDrop.DROP);swipeFilter.addAction(LauncherSwipeDrop.DROP+".STATUS");
+        registerReceiver(swipeDropReceiver,swipeFilter,null,main,Context.RECEIVER_EXPORTED);
         getApplicationContext().registerComponentCallbacks(this);
         dev.local.sunwindowdemo.features.iconlayers.IconAssets.onReload(iconsReloaded);
         dev.local.sunwindowdemo.features.iconlayers.IconAssets.connect(getApplicationContext());

@@ -23,6 +23,7 @@ public final class LauncherGuard extends XposedModule {
     private int claims;
     private RecentsFilter recents;
     private LauncherSwipeDrop swipeDrop;
+    private String swipeError="";
     private IBinder visualLease;
     @Override public void onModuleLoaded(ModuleLoadedParam p){eligible=!p.isSystemServer()&&(PACKAGE.equals(p.getProcessName())||p.getProcessName().startsWith(PACKAGE+":"));}
     @Override public synchronized void onPackageLoaded(PackageLoadedParam p){
@@ -31,7 +32,7 @@ public final class LauncherGuard extends XposedModule {
         List<XposedInterface.HookHandle> handles=new ArrayList<>();
         try{
             ClassLoader loader=p.getDefaultClassLoader();
-            try{swipeDrop=new LauncherSwipeDrop(loader,this::note);}catch(Exception unavailable){note("SWIPE_DROP_UNAVAILABLE "+unavailable.getClass().getSimpleName());}
+            try{swipeDrop=new LauncherSwipeDrop(loader,this::note);}catch(Exception unavailable){swipeError="接口预检失败："+unavailable;note("SWIPE_DROP_UNAVAILABLE "+unavailable);}
             Class<?> handler=Class.forName("com.android.quickstep.TouchInteractionHandler",false,loader);
             Class<?> service=Class.forName("com.android.quickstep.TouchInteractionService",false,loader);
             Method event=handler.getDeclaredMethod("onInputEvent",InputEvent.class);
@@ -56,7 +57,7 @@ public final class LauncherGuard extends XposedModule {
                         return null;
                     }
                     LauncherSwipeDrop current=swipeDrop;LauncherSwipeDrop.Point point=null;Runnable release=null;
-                    try{if(current!=null){point=current.capture(e);release=current.release(chain.getThisObject(),point);}}
+                    try{if(current!=null){point=current.capture(e);current.before(chain.getThisObject(),point);release=current.release(chain.getThisObject(),point);}}
                     catch(Exception failure){if(current!=null)current.reset();}
                     Object result;
                     try{result=chain.proceed();}catch(Throwable failure){if(current!=null)current.reset();throw failure;}
@@ -81,13 +82,14 @@ public final class LauncherGuard extends XposedModule {
     private void connect(Context service){
         disconnect();context=service.getApplicationContext();
         LauncherRotationSuggestion.connect(context);
-        if(swipeDrop!=null)try{swipeDrop.connect(service);}catch(Exception failure){swipeDrop.close();note("SWIPE_DROP_OVERLAY_UNAVAILABLE");}
+        if(swipeDrop!=null)try{swipeDrop.connect(service);}catch(Exception failure){swipeDrop.close();swipeError="提示区创建失败："+failure;note("SWIPE_DROP_OVERLAY_UNAVAILABLE "+failure);}
         BackVisual.publish(context);
         receiver=new BroadcastReceiver(){public void onReceive(Context c,Intent intent){
             if(!STATE.equals(intent.getAction()))return;
             try{if(getSentFromUid()!=context.getPackageManager().getApplicationInfo(BackBridge.PACKAGE,0).uid)return;}catch(Exception e){return;}
             android.os.Bundle swipeExtras=intent.getExtras();
             if(swipeDrop!=null)swipeDrop.configure(intent.getBooleanExtra("swipeDropEnabled",false),swipeExtras==null?null:swipeExtras.getBinder("lease"));
+            if(!swipeError.isEmpty())context.sendBroadcast(new Intent(LauncherSwipeDrop.DROP+".STATUS").setPackage(BackBridge.PACKAGE).putExtra("status",swipeError.substring(0,Math.min(240,swipeError.length()))),null,android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
             if(!intent.getBooleanExtra("enabled",false)){gate.disable();note("GUARD_STATE disabled");return;}
             android.os.Bundle extras=intent.getExtras();
             IBinder lease=extras==null?null:extras.getBinder("lease");

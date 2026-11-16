@@ -8,6 +8,9 @@ public final class SwipeDropPolicy {
         return enabled&&backend&&unlocked&&touch&&display==0&&pointers==1&&task>=0&&!home
             &&width>0&&height>width&&Float.isFinite(y)&&y>=height-Math.min(height*.12f,160);
     }
+    public static boolean nativeStart(boolean ready,boolean touch,int display,int pointers,int task,boolean home,int width,int height,boolean admitted){
+        return ready&&touch&&display==0&&pointers==1&&task>=0&&!home&&width>0&&height>width&&admitted;
+    }
     public static boolean inside(float x,float y,int width,int height,int density){
         if(!Float.isFinite(x)||!Float.isFinite(y)||width<=0||height<=0||density<=0)return false;
         float scale=density/160f,margin=16*scale,w=Math.min(width*.4f,144*scale),h=104*scale;

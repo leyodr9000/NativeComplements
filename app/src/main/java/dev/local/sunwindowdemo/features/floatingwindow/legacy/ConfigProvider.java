@@ -16,6 +16,13 @@ public final class ConfigProvider extends ContentProvider {
             if(uid!=getContext().getApplicationInfo().uid && uid!=getContext().getPackageManager().getApplicationInfo(BackBridge.PACKAGE,0).uid)
                 throw new SecurityException("settings reader");
         } catch(android.content.pm.PackageManager.NameNotFoundException e){throw new SecurityException(e);}
+        if("swipeDropStatus".equals(method)){
+            if(uid==getContext().getApplicationInfo().uid)throw new SecurityException("host status only");
+            String status=extras==null?null:extras.getString("status");
+            if(status==null||status.length()>240)throw new IllegalArgumentException("status");
+            getContext().getSharedPreferences("swipe_drop_status",0).edit().putString("status",status).putLong("time",android.os.SystemClock.elapsedRealtime()).apply();
+            return Bundle.EMPTY;
+        }
         if("targets".equals(method)){
             ArrayList<String> keys=extras==null?null:extras.getStringArrayList("targets");
             new Config(getContext()).targets(keys,extras==null?null:extras.getStringArrayList("labels"));

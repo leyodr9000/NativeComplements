@@ -17,6 +17,12 @@ public class SidebarSwipeDropPolicyTest {
   assertFalse(SwipeDropPolicy.canStart(true,true,true,true,0,1,42,false,2400,1080,1070));
   assertFalse(SwipeDropPolicy.canStart(true,true,true,true,0,1,42,false,1080,2400,1200));
  }
+ @Test public void pixelNativeAdmissionIsRequiredInsteadOfGuessingBottomCoordinates(){
+  assertTrue(SwipeDropPolicy.nativeStart(true,true,0,1,42,false,1080,2400,true));
+  assertFalse(SwipeDropPolicy.nativeStart(true,true,0,1,42,false,1080,2400,false));
+  assertFalse(SwipeDropPolicy.nativeStart(true,true,0,1,42,true,1080,2400,true));
+  assertFalse(SwipeDropPolicy.nativeStart(true,true,1,1,42,false,1080,2400,true));
+ }
  @Test public void releaseRequiresSameRecognizedSinglePointerAndBoundedGesture(){
   assertTrue(SwipeDropPolicy.release(true,true,true,true,500,1));
   assertFalse(SwipeDropPolicy.release(false,true,true,true,500,1));
